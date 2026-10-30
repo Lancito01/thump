@@ -4,21 +4,93 @@
              ThemeMode="Dark"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <SolidColorBrush x:Key="Accent" Color="#FF2D55"/>
-        <SolidColorBrush x:Key="Muted" Color="#8A8A99"/>
-        <SolidColorBrush x:Key="Panel" Color="#1A1A22"/>
+        <Color x:Key="PinkColor">#FF1978</Color>
+        <Color x:Key="AmberColor">#FFB020</Color>
 
+        <SolidColorBrush x:Key="Accent" Color="{StaticResource PinkColor}"/>
+        <SolidColorBrush x:Key="Muted" Color="#8C8CA1"/>
+        <SolidColorBrush x:Key="Bg" Color="#0F0F15"/>
+        <SolidColorBrush x:Key="Panel" Color="#15151E"/>
+        <SolidColorBrush x:Key="CardBg" Color="#1B1B26"/>
+        <SolidColorBrush x:Key="CardBorder" Color="#262635"/>
+        <SolidColorBrush x:Key="Track" Color="#232331"/>
+
+        <LinearGradientBrush x:Key="BrandGradient" StartPoint="0,1" EndPoint="1,0">
+            <GradientStop Color="{StaticResource PinkColor}" Offset="0"/>
+            <GradientStop Color="{StaticResource AmberColor}" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- Rounded panel that groups related settings -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="18,14,18,16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <!-- Small all-caps label used on the live panel -->
+        <Style x:Key="Eyebrow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{StaticResource Accent}"/>
-            <Setter Property="Margin" Value="0,18,0,6"/>
+            <Setter Property="Margin" Value="0,14,0,6"/>
         </Style>
         <Style x:Key="Hint" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Muted}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Margin" Value="0,2,0,8"/>
+        </Style>
+
+        <!-- Big call-to-action buttons -->
+        <Style x:Key="BigButtonBase" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Height" Value="52"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource BigButtonBase}">
+            <Setter Property="Background" Value="{StaticResource BrandGradient}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style x:Key="StopButton" TargetType="Button" BasedOn="{StaticResource BigButtonBase}">
+            <Setter Property="Background" Value="{StaticResource CardBg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BrandGradient}"/>
+            <Setter Property="BorderThickness" Value="2"/>
         </Style>
     </Application.Resources>
 </Application>

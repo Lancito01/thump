@@ -24,6 +24,62 @@ public static class Palettes
         return list.Count > 0 ? list : [Rgb.White];
     }
 
+    // Variations used when a source has fewer colours than there are lights: (hue shift °, saturation ×, value ×).
+    // Order matters: with a plain orange cover and 4 lights you get orange, red-orange, deep orange, soft orange.
+    static readonly (double H, double S, double V)[] Variations =
+    [
+        (-16, 1, 1),     // redder
+        (0, 1, 0.55),    // deeper / darker
+        (0, 0.5, 1),     // softer / lighter
+        (14, 1, 1),      // ambery
+        (-32, 1, 1),
+        (28, 1, 1),
+        (0, 0.25, 1),
+        (-8, 1, 0.75),
+    ];
+
+    // For white/grey sources, where a hue shift means nothing: vary the colour temperature instead.
+    static readonly Rgb[] WhiteVariations =
+    [
+        new(1, 0.82, 0.58), new(0.78, 0.86, 1), new(0.6, 0.6, 0.6), new(1, 0.7, 0.75), new(0.85, 0.75, 1), new(1, 0.93, 0.8),
+    ];
+
+    /// <summary>
+    /// Returns at least <paramref name="count"/> clearly different colours, so every light gets its own colour.
+    /// Near-duplicate source colours are merged first; missing colours are derived from the source colours.
+    /// </summary>
+    public static List<Rgb> Expand(IReadOnlyList<Rgb> colors, int count)
+    {
+        var result = new List<Rgb>();
+        foreach (var c in colors)
+            if (!result.Any(r => Distance(r, c) < 0.22)) result.Add(c); // e.g. two near-identical reds count as one
+        if (result.Count == 0) result.Add(Rgb.White);
+
+        int baseCount = result.Count;
+        for (int v = 0; result.Count < count && v < 200; v++)
+        {
+            var src = result[v % baseCount];
+            int round = v / baseCount;
+            var (h, sat, val) = src.ToHsv();
+            Rgb next;
+            if (sat < 0.15)
+            {
+                next = WhiteVariations[round % WhiteVariations.Length];
+            }
+            else
+            {
+                var (dh, ds, dv) = Variations[round % Variations.Length];
+                double spread = 1 + round / Variations.Length; // run out of variations → spread hues further
+                next = Rgb.FromHsv(h + dh * spread, Math.Clamp(sat * ds, 0, 1), Math.Clamp(val * dv, 0, 1));
+            }
+            if (!result.Any(r => Distance(r, next) < 0.15)) result.Add(next);
+        }
+        return result;
+    }
+
+    static double Distance(Rgb a, Rgb b) =>
+        Math.Sqrt((a.R - b.R) * (a.R - b.R) + (a.G - b.G) * (a.G - b.G) + (a.B - b.B) * (a.B - b.B));
+
     /// <summary>
     /// Picks the most prominent distinct, colourful hues from a BGRA image (e.g. album art).
     /// Weighted by saturation × brightness so a small neon logo can beat a big grey background.

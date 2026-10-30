@@ -28,6 +28,8 @@ public sealed class SyncEngine : IDisposable
     // Snapshots for the UI (replaced atomically).
     public volatile LightOutput[] Outputs = [];
     public volatile AudioFeatures? LastFeatures;
+    /// <summary>The colours currently assigned across the lights (one per active light, at least).</summary>
+    public volatile Rgb[] Palette = [];
 
     public event Action<string>? Status;
     public AlbumArtSource AlbumArt => _albumArt;
@@ -138,7 +140,11 @@ public sealed class SyncEngine : IDisposable
                     screen ??= new ScreenSampler();
                     if (frame % 2 == 0) screen.Capture();
                 }
-                if (frame % 10 == 0) palette = CurrentPalette(s);
+                if (frame % 10 == 0)
+                {
+                    palette = CurrentPalette(s);
+                    Palette = palette.ToArray();
+                }
 
                 var outputs = Render(s, f, dt, palette, screenMode ? screen : null);
                 Outputs = outputs;
@@ -180,7 +186,9 @@ public sealed class SyncEngine : IDisposable
             ColorSource.Custom => Palettes.Parse(s.CustomColors.Split([',', ' ', ';', '\n'], StringSplitOptions.RemoveEmptyEntries)),
             _ => Palettes.Parse(Palettes.Presets.GetValueOrDefault(s.Preset) ?? Palettes.Presets.First().Value),
         };
-        return p.Select(c => c.Vivid(s.Vividness).Normalized()).ToList();
+        // One distinct colour per active light; variations fill in when the source has too few colours.
+        int lights = CurrentLights(s).Count(l => l.Enabled);
+        return Palettes.Expand(p.Select(c => c.Vivid(s.Vividness).Normalized()).ToList(), Math.Max(1, lights));
     }
 
     LightOutput[] Render(AppSettings s, AudioFeatures f, double dt, List<Rgb> palette, ScreenSampler? screen)

@@ -2,201 +2,267 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Thump"
-        Title="Thump — bass-first Hue sync" Width="1080" Height="760" MinWidth="900" MinHeight="600"
+        Title="Thump" Width="1120" Height="800" MinWidth="940" MinHeight="640"
+        Icon="Assets/thump.ico" Background="{StaticResource Bg}"
         WindowStartupLocation="CenterScreen">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="340"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- Left: live view + transport -->
-        <Border Background="{StaticResource Panel}" Padding="20">
-            <DockPanel LastChildFill="True">
-                <StackPanel DockPanel.Dock="Top">
-                    <TextBlock Text="THUMP" FontSize="28" FontWeight="Black" Foreground="{StaticResource Accent}"/>
-                    <TextBlock Text="bass-first sync for Philips Hue" Style="{StaticResource Hint}"/>
-
-                    <TextBlock Text="Lights" Style="{StaticResource SectionHeader}"/>
-                    <ItemsControl x:Name="PreviewLights">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-
-                    <TextBlock Text="Spectrum" Style="{StaticResource SectionHeader}"/>
-                    <Grid Height="90">
-                        <UniformGrid x:Name="BandMeters" Rows="1"/>
-                    </Grid>
-                    <UniformGrid x:Name="BandLabels" Rows="1" Margin="0,4,0,0"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Ellipse x:Name="KickLed" Width="14" Height="14" Fill="#331A1A" Margin="0,0,8,0"/>
-                        <TextBlock Text="Kick" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="BpmText" Margin="16,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+        <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="20,18,20,20">
+                <!-- Brand -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,18">
+                    <Image Source="Assets/logo.png" Width="44" Height="44" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="THUMP" FontSize="24" FontWeight="Black" Foreground="{StaticResource BrandGradient}"/>
+                        <TextBlock Text="bass-first sync for Philips Hue" FontSize="12" Foreground="{StaticResource Muted}"/>
                     </StackPanel>
+                </StackPanel>
 
-                    <TextBlock Text="Now playing" Style="{StaticResource SectionHeader}"/>
-                    <StackPanel Orientation="Horizontal">
-                        <Border Width="64" Height="64" CornerRadius="4" Background="#222" ClipToBounds="True">
-                            <Image x:Name="ArtImage" Stretch="UniformToFill"/>
-                        </Border>
-                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center" Width="200">
-                            <TextBlock x:Name="TrackTitle" Text="Nothing playing" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="TrackArtist" TextTrimming="CharacterEllipsis" Foreground="{StaticResource Muted}"/>
-                            <StackPanel x:Name="ArtPalette" Orientation="Horizontal" Margin="0,6,0,0"/>
+                <!-- Transport -->
+                <StackPanel DockPanel.Dock="Bottom">
+                    <TextBlock x:Name="StatusText" Style="{StaticResource Hint}" Margin="2,0,0,10" Text="Preview mode — not connected to a bridge."/>
+                    <Button x:Name="SyncButton" Content="Start light sync" Style="{StaticResource PrimaryButton}" Click="SyncButton_Click"/>
+                </StackPanel>
+
+                <StackPanel>
+                    <!-- Now playing -->
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="ArtBorder" Width="84" Height="84" CornerRadius="10" Background="{StaticResource Track}">
+                                <Border.Effect>
+                                    <DropShadowEffect x:Name="ArtGlow" BlurRadius="28" ShadowDepth="0" Opacity="0" Color="{StaticResource PinkColor}"/>
+                                </Border.Effect>
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="NOW PLAYING" Style="{StaticResource Eyebrow}" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="TrackTitle" Text="Nothing playing" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="TrackArtist" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"/>
+                                <StackPanel x:Name="ArtPalette" Orientation="Horizontal" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Lights -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="LIGHTS" Style="{StaticResource Eyebrow}"/>
+                            <ItemsControl x:Name="PreviewLights">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
                         </StackPanel>
-                    </StackPanel>
-                </StackPanel>
+                    </Border>
 
-                <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
-                    <TextBlock x:Name="StatusText" Style="{StaticResource Hint}" Text="Preview mode — not connected to a bridge."/>
-                    <Button x:Name="SyncButton" Content="Start light sync" Height="44" FontSize="15" FontWeight="SemiBold"
-                            HorizontalAlignment="Stretch" Click="SyncButton_Click"
-                            Background="{StaticResource Accent}" Foreground="White"/>
+                    <!-- Spectrum -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,10">
+                                <Border x:Name="KickPill" DockPanel.Dock="Right" CornerRadius="9" Padding="10,2" Background="{StaticResource Track}">
+                                    <TextBlock x:Name="KickText" Text="KICK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
+                                </Border>
+                                <TextBlock Text="SPECTRUM" Style="{StaticResource Eyebrow}" Margin="0" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <UniformGrid x:Name="BandMeters" Rows="1" Height="84"/>
+                            <UniformGrid x:Name="BandLabels" Rows="1" Margin="0,6,0,0"/>
+                            <TextBlock x:Name="BpmText" Margin="0,10,0,0" FontSize="12" Foreground="{StaticResource Muted}"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-                <Grid/>
             </DockPanel>
         </Border>
 
         <!-- Right: settings -->
-        <TabControl Grid.Column="1" Margin="12,8,8,8">
+        <TabControl x:Name="Tabs" Grid.Column="1" Margin="20,12,12,12" Background="Transparent" BorderThickness="0">
             <TabItem Header="Bridge">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16" MaxWidth="640" HorizontalAlignment="Left">
-                        <TextBlock Text="1. Find your bridge" Style="{StaticResource SectionHeader}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBox x:Name="BridgeIpBox" Width="200" Text="{Binding BridgeIp, UpdateSourceTrigger=PropertyChanged}"/>
-                            <Button Content="Discover" Margin="8,0,0,0" Click="Discover_Click"/>
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource Hint}" Text="Discovery uses Philips' online lookup. If it finds nothing, type the bridge's IP (see the Hue app → Settings → Bridges)."/>
-
-                        <TextBlock Text="2. Pair" Style="{StaticResource SectionHeader}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Pair with bridge" Click="Pair_Click"/>
-                            <TextBlock x:Name="PairStatus" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource Hint}" Text="Click Pair, then press the round link button on top of the bridge within 30 seconds."/>
-
-                        <TextBlock Text="3. Entertainment area" Style="{StaticResource SectionHeader}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <ComboBox x:Name="AreaBox" Width="320" SelectionChanged="AreaBox_SelectionChanged"/>
-                            <Button Content="Refresh" Margin="8,0,0,0" Click="RefreshAreas_Click"/>
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource Hint}" Text="Thump streams to an entertainment area, same as Hue Sync. Create or edit one in the Hue app → Settings → Entertainment areas, and place the lights where they are in your room — Screen mode uses those positions."/>
+                    <StackPanel Margin="0,12,8,12" MaxWidth="700" HorizontalAlignment="Left">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="1 · Find your bridge" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Discovery uses Philips' online lookup. If it finds nothing, type the bridge's IP (Hue app → Settings → Bridges)."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBox x:Name="BridgeIpBox" Width="220" Text="{Binding BridgeIp, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Content="Discover" Margin="8,0,0,0" Click="Discover_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="2 · Pair" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Click Pair, then press the round link button on top of the bridge within 30 seconds."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Pair with bridge" Click="Pair_Click"/>
+                                    <TextBlock x:Name="PairStatus" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="3 · Entertainment area" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Thump streams to an entertainment area, like Hue Sync does. Create or edit one in the Hue app → Settings → Entertainment areas, and place the lights where they really are: Screen mode uses those positions."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <ComboBox x:Name="AreaBox" Width="320" SelectionChanged="AreaBox_SelectionChanged"/>
+                                    <Button Content="Refresh" Margin="8,0,0,0" Click="RefreshAreas_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Lights">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16">
-                        <TextBlock Style="{StaticResource Hint}" Text="Pick which lights take part and what each one reacts to. Tip: put one or two lights on Kick for a hard pulse and the rest on Bass or Mix."/>
-                        <ItemsControl x:Name="LightList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type local:LightSetting}">
-                                    <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="40"/>
-                                            <ColumnDefinition Width="260"/>
-                                            <ColumnDefinition Width="160"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                        <ComboBox Grid.Column="2" ItemsSource="{x:Static local:MainWindow.Roles}" SelectedItem="{Binding Role}"/>
-                                        <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}">
-                                            <Run Text="x"/><Run Text="{Binding X, StringFormat=0.0, Mode=OneWay}"/>
-                                            <Run Text=" z"/><Run Text="{Binding Z, StringFormat=0.0, Mode=OneWay}"/>
-                                        </TextBlock>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock x:Name="NoLightsHint" Style="{StaticResource Hint}" Margin="0,12,0,0"
-                                   Text="No entertainment area selected — showing 5 virtual preview lights. Pair a bridge on the Bridge tab."/>
-
-                        <TextBlock Text="Roles" Style="{StaticResource SectionHeader}"/>
-                        <TextBlock Style="{StaticResource Hint}">
-                            <Run FontWeight="SemiBold" Text="Mix"/> — all bands, weighted by the Audio tab sliders, plus kick punch.<LineBreak/>
-                            <Run FontWeight="SemiBold" Text="Bass"/> — sub + bass only, plus kick punch.<LineBreak/>
-                            <Run FontWeight="SemiBold" Text="Kick"/> — flashes on detected kick drums, dark in between.<LineBreak/>
-                            <Run FontWeight="SemiBold" Text="Mids / Highs"/> — synths &amp; vocals / hats &amp; cymbals.<LineBreak/>
-                            <Run FontWeight="SemiBold" Text="Ambient"/> — steady colour, ignores the music.
-                        </TextBlock>
+                    <StackPanel Margin="0,12,8,12" MaxWidth="760" HorizontalAlignment="Left">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Lights &amp; roles" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Pick which lights take part and what each one reacts to. Tip: put one or two lights on Kick for a hard pulse and the rest on Bass or Mix."/>
+                                <ItemsControl x:Name="LightList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type local:LightSetting}">
+                                            <Grid Margin="0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="40"/>
+                                                    <ColumnDefinition Width="260"/>
+                                                    <ColumnDefinition Width="160"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <ComboBox Grid.Column="2" ItemsSource="{x:Static local:MainWindow.Roles}" SelectedItem="{Binding Role}"/>
+                                                <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}">
+                                                    <Run Text="x"/><Run Text="{Binding X, StringFormat=0.0, Mode=OneWay}"/>
+                                                    <Run Text=" z"/><Run Text="{Binding Z, StringFormat=0.0, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock x:Name="NoLightsHint" Style="{StaticResource Hint}" Margin="0,4,0,0"
+                                           Text="No entertainment area selected, so the live panel shows 5 virtual preview lights. Pair a bridge on the Bridge tab."/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="What the roles do" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" LineHeight="20">
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Mix"/> — all bands, weighted by the Audio tab, plus kick punch.<LineBreak/>
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Bass"/> — sub + bass only, plus kick punch.<LineBreak/>
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Kick"/> — flashes on detected kicks, dark in between.<LineBreak/>
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Mids / Highs"/> — synths &amp; vocals / hats &amp; cymbals.<LineBreak/>
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Ambient"/> — steady colour, ignores the music.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Audio">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16" MaxWidth="720" HorizontalAlignment="Left">
-                        <TextBlock Text="Input" Style="{StaticResource SectionHeader}"/>
-                        <ComboBox x:Name="DeviceBox" Width="400" HorizontalAlignment="Left" SelectionChanged="DeviceBox_SelectionChanged"/>
-                        <TextBlock Style="{StaticResource Hint}" Text="Thump listens to what this output device is playing — no microphone needed."/>
-
-                        <TextBlock Text="Band weights" Style="{StaticResource SectionHeader}"/>
-                        <TextBlock Style="{StaticResource Hint}" Text="How much each frequency range drives the Mix role. Each band is auto-levelled on its own, so a quiet sub line still registers. Crank Sub/Bass, pull the rest down, and the lights follow the low end."/>
-                        <ItemsControl x:Name="BandList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type local:BandSetting}">
-                                    <local:LabeledSlider Label="{Binding Label}" Value="{Binding Weight}" Minimum="0" Maximum="3" Format="0.00×"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <TextBlock Text="Response" Style="{StaticResource SectionHeader}"/>
-                        <local:LabeledSlider Label="Gain" Value="{Binding Gain}" Minimum="0.3" Maximum="3" Format="0.00×" Tip="Overall boost before the contrast curve."/>
-                        <local:LabeledSlider Label="Contrast" Value="{Binding Contrast}" Minimum="0.5" Maximum="4" Format="0.0" Tip="Higher = darker valleys and punchier peaks."/>
-                        <local:LabeledSlider Label="Attack" Value="{Binding AttackMs}" Minimum="0" Maximum="200" Format="0 ms" Tip="How fast lights rise."/>
-                        <local:LabeledSlider Label="Release" Value="{Binding ReleaseMs}" Minimum="20" Maximum="1500" Format="0 ms" Tip="How fast lights fall back."/>
-                        <local:LabeledSlider Label="Auto-level memory" Value="{Binding AdaptSeconds}" Minimum="1" Maximum="30" Format="0 s" Tip="How long a loud moment keeps the scale up. Short = reacts to drops and breakdowns quickly."/>
-                        <local:LabeledSlider Label="Min brightness" Value="{Binding MinBrightness}" Minimum="0" Maximum="0.5" Format="0%"/>
-                        <local:LabeledSlider Label="Max brightness" Value="{Binding MaxBrightness}" Minimum="0.1" Maximum="1" Format="0%"/>
-
-                        <TextBlock Text="Kick drum" Style="{StaticResource SectionHeader}"/>
-                        <local:LabeledSlider Label="Kick punch" Value="{Binding KickPunch}" Minimum="0" Maximum="1.5" Format="0%" Tip="Extra flash added to Mix and Bass lights on each kick."/>
-                        <local:LabeledSlider Label="Kick sensitivity" Value="{Binding KickSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Kicks are learned per track: a hit must reach a share of this track's typical kick, and off-beat hits need more once the tempo locks. Raise if kicks are missed, lower if basslines trigger it."/>
-                        <local:LabeledSlider Label="Kick decay" Value="{Binding KickDecayMs}" Minimum="40" Maximum="600" Format="0 ms" Tip="Length of each kick flash."/>
-
-                        <Button Content="Reset audio settings" HorizontalAlignment="Left" Margin="0,16,0,0" Click="ResetAudio_Click"/>
+                    <StackPanel Margin="0,12,8,12" MaxWidth="760" HorizontalAlignment="Left">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Input" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Thump listens to whatever this output device is playing. No microphone needed."/>
+                                <ComboBox x:Name="DeviceBox" Width="420" HorizontalAlignment="Left" SelectionChanged="DeviceBox_SelectionChanged"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Band weights" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="How much each frequency range drives the Mix role. Each band levels itself, so a quiet sub line still registers. Crank Sub/Bass and pull the rest down to make the lights follow the low end."/>
+                                <ItemsControl x:Name="BandList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type local:BandSetting}">
+                                            <local:LabeledSlider Label="{Binding Label}" Value="{Binding Weight}" Minimum="0" Maximum="3" Format="0.00×"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Response" Style="{StaticResource CardTitle}"/>
+                                <local:LabeledSlider Label="Gain" Value="{Binding Gain}" Minimum="0.3" Maximum="3" Format="0.00×" Tip="Overall boost before the contrast curve."/>
+                                <local:LabeledSlider Label="Contrast" Value="{Binding Contrast}" Minimum="0.5" Maximum="4" Format="0.0" Tip="Higher = darker valleys and punchier peaks."/>
+                                <local:LabeledSlider Label="Attack" Value="{Binding AttackMs}" Minimum="0" Maximum="200" Format="0 ms" Tip="How fast lights rise."/>
+                                <local:LabeledSlider Label="Release" Value="{Binding ReleaseMs}" Minimum="20" Maximum="1500" Format="0 ms" Tip="How fast lights fall back."/>
+                                <local:LabeledSlider Label="Auto-level memory" Value="{Binding AdaptSeconds}" Minimum="1" Maximum="30" Format="0 s" Tip="How long a loud moment keeps the scale up. Short = reacts to drops and breakdowns quickly."/>
+                                <local:LabeledSlider Label="Min brightness" Value="{Binding MinBrightness}" Minimum="0" Maximum="0.5" Format="0%"/>
+                                <local:LabeledSlider Label="Max brightness" Value="{Binding MaxBrightness}" Minimum="0.1" Maximum="1" Format="0%"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Kick drum" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="The kick detector learns each track: how hard its kick hits, what it sounds like, the tempo (even as it drifts) and the rhythm pattern. It starts over on every track change."/>
+                                <local:LabeledSlider Label="Kick punch" Value="{Binding KickPunch}" Minimum="0" Maximum="1.5" Format="0%" Tip="Extra flash added to Mix and Bass lights on each kick."/>
+                                <local:LabeledSlider Label="Kick sensitivity" Value="{Binding KickSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Raise if kicks are missed, lower if basslines or claps trigger it."/>
+                                <local:LabeledSlider Label="Kick decay" Value="{Binding KickDecayMs}" Minimum="40" Maximum="600" Format="0 ms" Tip="Length of each kick flash."/>
+                            </StackPanel>
+                        </Border>
+                        <Button Content="Reset audio settings" HorizontalAlignment="Left" Click="ResetAudio_Click"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Colors">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16" MaxWidth="720" HorizontalAlignment="Left">
-                        <TextBlock Text="Color source" Style="{StaticResource SectionHeader}"/>
-                        <ComboBox x:Name="SourceBox" Width="260" HorizontalAlignment="Left" SelectedItem="{Binding ColorSource}"/>
-                        <TextBlock x:Name="SourceHint" Style="{StaticResource Hint}"/>
+                    <StackPanel Margin="0,12,8,12" MaxWidth="760" HorizontalAlignment="Left">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Color source" Style="{StaticResource CardTitle}"/>
+                                <TextBlock x:Name="SourceHint" Style="{StaticResource Hint}"/>
+                                <ComboBox x:Name="SourceBox" Width="260" HorizontalAlignment="Left" SelectedItem="{Binding ColorSource}"/>
 
-                        <StackPanel x:Name="PresetPanel">
-                            <TextBlock Text="Preset" Style="{StaticResource SectionHeader}"/>
-                            <ComboBox x:Name="PresetBox" Width="260" HorizontalAlignment="Left" SelectedItem="{Binding Preset}"/>
-                        </StackPanel>
+                                <StackPanel x:Name="PresetPanel">
+                                    <TextBlock x:Name="PresetLabel" Text="Preset" Style="{StaticResource SectionHeader}"/>
+                                    <ComboBox x:Name="PresetBox" Width="260" HorizontalAlignment="Left" SelectedItem="{Binding Preset}"/>
+                                </StackPanel>
 
-                        <StackPanel x:Name="CustomPanel">
-                            <TextBlock Text="Custom colors" Style="{StaticResource SectionHeader}"/>
-                            <TextBox Text="{Binding CustomColors, UpdateSourceTrigger=PropertyChanged}" Width="420" HorizontalAlignment="Left"/>
-                            <TextBlock Style="{StaticResource Hint}" Text="Hex colors separated by commas, e.g. #FF0000, #00FFAA, #FFFFFF"/>
-                        </StackPanel>
+                                <StackPanel x:Name="CustomPanel">
+                                    <TextBlock Text="Custom colors" Style="{StaticResource SectionHeader}"/>
+                                    <TextBox Text="{Binding CustomColors, UpdateSourceTrigger=PropertyChanged}" Width="420" HorizontalAlignment="Left"/>
+                                    <TextBlock Style="{StaticResource Hint}" Text="Hex colors separated by commas, e.g. #FF0000, #00FFAA, #FFFFFF"/>
+                                </StackPanel>
 
-                        <TextBlock Text="Current palette" Style="{StaticResource SectionHeader}"/>
-                        <StackPanel x:Name="PaletteSwatches" Orientation="Horizontal"/>
+                                <TextBlock Text="Colors on your lights" Style="{StaticResource SectionHeader}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="One distinct colour per light. When the source has fewer colours than you have lights (say a plain orange cover), Thump makes close variations: redder, ambery, deeper, softer."/>
+                                <StackPanel x:Name="PaletteSwatches" Orientation="Horizontal"/>
+                            </StackPanel>
+                        </Border>
 
-                        <StackPanel x:Name="MotionPanel">
-                            <TextBlock Text="Motion" Style="{StaticResource SectionHeader}"/>
-                            <ComboBox x:Name="MotionBox" Width="260" HorizontalAlignment="Left" SelectedItem="{Binding ColorMotion}"/>
-                            <local:LabeledSlider Label="Drift speed" Value="{Binding DriftSpeed}" Minimum="0.01" Maximum="1" Format="0.00/s" Tip="Palette steps per second in Drift mode."/>
-                            <local:LabeledSlider Label="Hi-hat sparkle" Value="{Binding Sparkle}" Minimum="0" Maximum="1" Format="0%" Tip="Flash Mix/Highs lights toward white on hats and cymbals."/>
-                        </StackPanel>
+                        <Border x:Name="MotionPanel" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Motion" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="StepOnKick passes the colours one light along on every kick (each light keeps a different colour). Drift moves slowly. Static keeps each light on its own colour."/>
+                                <ComboBox x:Name="MotionBox" Width="260" HorizontalAlignment="Left" SelectedItem="{Binding ColorMotion}" Margin="0,0,0,8"/>
+                                <local:LabeledSlider Label="Drift speed" Value="{Binding DriftSpeed}" Minimum="0.01" Maximum="1" Format="0.00/s" Tip="Palette steps per second in Drift mode."/>
+                                <local:LabeledSlider Label="Hi-hat sparkle" Value="{Binding Sparkle}" Minimum="0" Maximum="1" Format="0%" Tip="Flash Mix/Highs lights toward white on hats and cymbals."/>
+                            </StackPanel>
+                        </Border>
 
-                        <TextBlock Text="Tuning" Style="{StaticResource SectionHeader}"/>
-                        <local:LabeledSlider Label="Vividness" Value="{Binding Vividness}" Minimum="0" Maximum="1" Format="0%" Tip="Push colors toward full saturation. Hue lights look best with strong colors."/>
-                        <StackPanel x:Name="ScreenPanel">
-                            <local:LabeledSlider Label="Music → brightness" Value="{Binding ScreenAudioMix}" Minimum="0" Maximum="1" Format="0%" Tip="0% = pure ambilight. 100% = screen sets the color, music sets the brightness."/>
-                            <local:LabeledSlider Label="Screen smoothing" Value="{Binding ScreenSmoothingMs}" Minimum="0" Maximum="1000" Format="0 ms"/>
-                        </StackPanel>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Tuning" Style="{StaticResource CardTitle}"/>
+                                <local:LabeledSlider Label="Vividness" Value="{Binding Vividness}" Minimum="0" Maximum="1" Format="0%" Tip="Push colors toward full saturation. Hue lights look best with strong colors."/>
+                                <StackPanel x:Name="ScreenPanel">
+                                    <local:LabeledSlider Label="Music → brightness" Value="{Binding ScreenAudioMix}" Minimum="0" Maximum="1" Format="0%" Tip="0% = pure ambilight. 100% = screen sets the color, music sets the brightness."/>
+                                    <local:LabeledSlider Label="Screen smoothing" Value="{Binding ScreenSmoothingMs}" Minimum="0" Maximum="1000" Format="0 ms"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

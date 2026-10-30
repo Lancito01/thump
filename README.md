@@ -1,6 +1,10 @@
-# Thump
+<p align="center"><img src="assets/logo.png" width="120" alt="Thump logo"></p>
 
-**Bass-first music and screen sync for Philips Hue, for Windows 10/11.**
+<h1 align="center">Thump</h1>
+
+<p align="center"><b>Bass-first music and screen sync for Philips Hue, for Windows 10/11.</b></p>
+
+<p align="center"><img src="docs/screenshot-colors.png" width="820" alt="Thump: album-art colours spread across four lights, live spectrum and kick indicator"></p>
 
 Hue Sync's music mode is tuned for "average" music: it blends the whole spectrum into one loudness value. That's
 fine for pop, but on techno and house the lights end up following hats and synths instead of the thing you actually
@@ -18,8 +22,10 @@ feel: the kick and the sub. Thump is built the other way round.
   It starts over on every track change and survives breakdowns. No training data, no model files. It's a few hundred
   lines of C#.
 - **Per-light roles.** Put a light on *Kick* for a hard pulse, others on *Bass*, *Mix*, *Mids*, *Highs* or *Ambient*.
-- **Album-art colours.** Uses the cover of whatever's playing (Spotify, browsers, Apple Music, Tidal, foobar2000,
-  anything that shows up in Windows' media overlay).
+- **Album-art colours (the default).** Uses the cover of whatever's playing (Spotify, browsers, Apple Music, Tidal,
+  foobar2000, anything that shows up in Windows' media overlay) and changes with every track. **Every light gets its own
+  colour.** When a cover has fewer colours than you have lights (a plain orange cover with 4 lights, say), Thump
+  derives close variations: orange, red-orange, deep orange, soft orange.
 - **Screen colours.** Each light copies the part of the screen it sits next to. The music can still drive brightness.
 - **Presets and custom palettes**, with colour stepping on every kick, slow drift or static colours, plus an optional
   hi-hat "sparkle".

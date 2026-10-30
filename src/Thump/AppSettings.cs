@@ -50,6 +50,11 @@ public sealed class LightSetting : Observable
 
 public sealed class AppSettings : Observable
 {
+    /// <summary>Bumped when a default changes in a way existing users should get too.</summary>
+    /// <remarks>0 when missing from an older settings file; new installs and every save write the current version.</remarks>
+    public int SettingsVersion { get; set; }
+    const int CurrentVersion = 2;
+
     // Bridge
     string? _bridgeIp, _username, _clientKey, _applicationId, _areaId;
     public string? BridgeIp { get => _bridgeIp; set => Set(ref _bridgeIp, value); }
@@ -79,7 +84,7 @@ public sealed class AppSettings : Observable
     public double MaxBrightness { get => _maxBrightness; set => Set(ref _maxBrightness, value); }
 
     // Colour
-    ColorSource _colorSource = ColorSource.Preset;
+    ColorSource _colorSource = ColorSource.AlbumArt;
     ColorMotion _colorMotion = ColorMotion.StepOnKick;
     string _preset = "Warehouse", _customColors = "#FF0000, #0000FF, #FFFFFF";
     double _driftSpeed = 0.1, _sparkle = 0.25, _vividness = 0.5, _screenAudioMix = 0.5, _screenSmoothingMs = 120;
@@ -131,6 +136,8 @@ public sealed class AppSettings : Observable
                 if (s != null)
                 {
                     if (s.Bands.Count != AudioAnalyzer.Bands.Length) s.Bands = DefaultBands();
+                    if (s.SettingsVersion < 2) s.ColorSource = ColorSource.AlbumArt; // v2: album art is the default
+                    s.SettingsVersion = CurrentVersion;
                     return s;
                 }
             }
@@ -139,7 +146,7 @@ public sealed class AppSettings : Observable
         {
             // Corrupt settings: start fresh rather than crash.
         }
-        return new AppSettings();
+        return new AppSettings { SettingsVersion = CurrentVersion };
     }
 
     public void Save()

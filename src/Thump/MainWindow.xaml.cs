@@ -1,8 +1,11 @@
 ﻿using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -22,8 +25,11 @@ public partial class MainWindow : Window
     readonly SyncEngine _engine;
     readonly DispatcherTimer _uiTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     readonly List<Rectangle> _meters = [];
-    readonly List<(Ellipse Dot, TextBlock Label)> _previewDots = [];
+    readonly List<(Ellipse Dot, DropShadowEffect Glow, TextBlock Label)> _previewDots = [];
+    static readonly Color Pink = Color.FromRgb(0xFF, 0x19, 0x78);
+    static readonly Color TrackColor = Color.FromRgb(0x23, 0x23, 0x31);
     int _tick;
+    bool _skipSave;
 
     public MainWindow()
     {
@@ -44,16 +50,18 @@ public partial class MainWindow : Window
         DeviceBox.Tag = devices;
         DeviceBox.SelectedIndex = Math.Max(0, devices.FindIndex(d => d.Id == _settings.AudioDeviceId));
 
+        var meterBrush = new LinearGradientBrush(Pink, Color.FromRgb(0xFF, 0xB0, 0x20), new Point(0, 1), new Point(0, 0));
+        meterBrush.Freeze();
         for (int i = 0; i < AudioAnalyzer.Bands.Length; i++)
         {
-            var bar = new Rectangle { Fill = (Brush)FindResource("Accent"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(3, 0, 3, 0), RadiusX = 2, RadiusY = 2 };
-            var cell = new Grid { Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x2E)), Margin = new Thickness(3, 0, 3, 0) };
-            cell.Children.Add(bar);
+            var bar = new Rectangle { Fill = meterBrush, VerticalAlignment = VerticalAlignment.Bottom, RadiusX = 4, RadiusY = 4 };
+            var cell = new Border { Background = new SolidColorBrush(TrackColor), CornerRadius = new CornerRadius(4), Margin = new Thickness(3, 0, 3, 0), Child = bar };
             BandMeters.Children.Add(cell);
             _meters.Add(bar);
             BandLabels.Children.Add(new TextBlock { Text = BandShortNames[i], FontSize = 10, TextAlignment = TextAlignment.Center, Foreground = (Brush)FindResource("Muted") });
         }
 
+        SourceInitialized += (_, _) => UseDarkTitleBar();
         _settings.PropertyChanged += OnSettingChanged;
         UpdateColorPanels();
         _uiTimer.Tick += (_, _) => RenderUi();
@@ -64,6 +72,7 @@ public partial class MainWindow : Window
             _uiTimer.Start();
             StatusText.Text = $"Preview mode — listening to {_engine.AudioDeviceName}.";
             if (_settings.Username != null) await RefreshAreasAsync(quiet: true);
+            await MaybeTakeScreenshotAsync();
         };
         Closing += OnClosing;
     }
@@ -72,7 +81,8 @@ public partial class MainWindow : Window
     {
         _uiTimer.Stop();
         _engine.Dispose();
-        try { _settings.Save(); } catch { /* nothing useful to do on exit */ }
+        if (!_skipSave)
+            try { _settings.Save(); } catch { /* nothing useful to do on exit */ }
     }
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)
@@ -87,9 +97,10 @@ public partial class MainWindow : Window
         CustomPanel.Visibility = src == ColorSource.Custom ? Visibility.Visible : Visibility.Collapsed;
         ScreenPanel.Visibility = src == ColorSource.Screen ? Visibility.Visible : Visibility.Collapsed;
         MotionPanel.Visibility = src == ColorSource.Screen ? Visibility.Collapsed : Visibility.Visible;
+        PresetLabel.Text = src == ColorSource.AlbumArt ? "Fallback preset (when nothing is playing)" : "Preset";
         SourceHint.Text = src switch
         {
-            ColorSource.AlbumArt => "Colors come from the album art of whatever is playing (Spotify, browser, Tidal, Apple Music…). The preset below is used when nothing is playing.",
+            ColorSource.AlbumArt => "Colors come from the cover of whatever is playing (Spotify, browsers, Tidal, Apple Music…), and change with every track.",
             ColorSource.Screen => "Each light copies the part of your screen it sits next to (based on its position in the entertainment area). The music can still drive brightness.",
             ColorSource.Custom => "Your own palette.",
             _ => "A fixed palette. Lights step through it on every kick, or drift slowly.",
@@ -108,29 +119,37 @@ public partial class MainWindow : Window
             _previewDots.Clear();
             foreach (var o in outputs)
             {
-                var dot = new Ellipse { Width = 40, Height = 40, Stroke = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x40)), StrokeThickness = 1 };
-                var label = new TextBlock { FontSize = 10, TextAlignment = TextAlignment.Center, Width = 52, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = (Brush)FindResource("Muted") };
-                var stack = new StackPanel { Margin = new Thickness(0, 0, 6, 8) };
+                var glow = new DropShadowEffect { BlurRadius = 26, ShadowDepth = 0, Opacity = 0 };
+                var dot = new Ellipse { Width = 38, Height = 38, Margin = new Thickness(7), Effect = glow, Stroke = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)), StrokeThickness = 1 };
+                var label = new TextBlock { FontSize = 10, TextAlignment = TextAlignment.Center, Width = 56, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = (Brush)FindResource("Muted") };
+                var stack = new StackPanel { Margin = new Thickness(0, 0, 4, 2) };
                 stack.Children.Add(dot);
                 stack.Children.Add(label);
                 PreviewLights.Items.Add(stack);
-                _previewDots.Add((dot, label));
+                _previewDots.Add((dot, glow, label));
             }
         }
         for (int i = 0; i < outputs.Length; i++)
         {
             var c = outputs[i].Color;
-            var (dot, label) = _previewDots[i];
+            var (dot, glow, label) = _previewDots[i];
             dot.Fill = new SolidColorBrush(ToMedia(c));
+            // Glow in the light's own colour, as strong as the light is bright.
+            glow.Color = ToMedia(c.Normalized());
+            glow.Opacity = Math.Clamp(c.Max * 1.2, 0, 1);
             label.Text = outputs[i].Name;
         }
 
         if (_engine.LastFeatures is { } f)
         {
             for (int i = 0; i < _meters.Count; i++)
-                _meters[i].Height = Math.Max(1, f.Levels[i] * 90);
-            KickLed.Fill = new SolidColorBrush(Color.FromRgb((byte)(0x33 + f.KickEnvelope * 0xCC), (byte)(0x1A + f.KickEnvelope * 0x13), (byte)(0x1A + f.KickEnvelope * 0x3B)));
-            BpmText.Text = f.BeatLocked ? $"{f.Bpm:0} BPM · locked" : $"learning this track… {f.Learned:0%}";
+                _meters[i].Height = Math.Max(4, f.Levels[i] * 84);
+            double k = f.KickEnvelope;
+            KickPill.Background = new SolidColorBrush(Lerp(TrackColor, Pink, k));
+            KickText.Foreground = new SolidColorBrush(Lerp(Color.FromRgb(0x8C, 0x8C, 0xA1), System.Windows.Media.Colors.White, k));
+            BpmText.Text = f.BeatLocked ? $"{f.Bpm:0} BPM · locked to the beat"
+                : f.Learned < 1 ? $"learning this track’s kick… {f.Learned:0%}"
+                : "kick learned · finding the beat…";
         }
 
         if (_tick % 15 == 0) RenderPaletteSwatches();
@@ -138,21 +157,25 @@ public partial class MainWindow : Window
 
     void RenderPaletteSwatches()
     {
-        IEnumerable<Rgb> colors = _settings.ColorSource switch
-        {
-            ColorSource.AlbumArt when _engine.AlbumArt.Current?.Palette is { Count: > 0 } p => p,
-            ColorSource.Custom => Palettes.Parse(_settings.CustomColors.Split([',', ' ', ';'], StringSplitOptions.RemoveEmptyEntries)),
-            ColorSource.Screen => [],
-            _ => Palettes.Parse(Palettes.Presets.GetValueOrDefault(_settings.Preset) ?? []),
-        };
-        FillSwatches(PaletteSwatches, colors, 36);
+        // What the lights actually get: one distinct colour per light, variations included.
+        FillSwatches(PaletteSwatches, _settings.ColorSource == ColorSource.Screen ? [] : _engine.Palette, 40);
     }
 
     static void FillSwatches(Panel panel, IEnumerable<Rgb> colors, double size)
     {
+        var list = colors.ToList();
+        if (panel.Children.Count == list.Count &&
+            panel.Children.OfType<Border>().Select(b => (string)b.ToolTip).SequenceEqual(list.Select(c => c.ToHex())))
+            return; // unchanged; avoid rebuilding every refresh
         panel.Children.Clear();
-        foreach (var c in colors)
-            panel.Children.Add(new Border { Width = size, Height = size * 0.6, CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 4, 0), Background = new SolidColorBrush(ToMedia(c)), ToolTip = c.ToHex() });
+        foreach (var c in list)
+            panel.Children.Add(new Border { Width = size, Height = size * 0.55, CornerRadius = new CornerRadius(size * 0.275), Margin = new Thickness(0, 0, 5, 0), Background = new SolidColorBrush(ToMedia(c)), ToolTip = c.ToHex() });
+    }
+
+    static Color Lerp(Color a, Color b, double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return Color.FromRgb((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
     }
 
     static Color ToMedia(Rgb c) =>
@@ -162,7 +185,8 @@ public partial class MainWindow : Window
     {
         TrackTitle.Text = np == null || np.Title.Length == 0 ? "Nothing playing" : np.Title;
         TrackArtist.Text = np?.Artist ?? "";
-        ArtImage.Source = null;
+        ArtBorder.Background = (Brush)FindResource("Track");
+        ArtGlow.Opacity = 0;
         if (np?.ArtPng != null)
         {
             var img = new BitmapImage();
@@ -170,7 +194,12 @@ public partial class MainWindow : Window
             img.CacheOption = BitmapCacheOption.OnLoad;
             img.StreamSource = new MemoryStream(np.ArtPng);
             img.EndInit();
-            ArtImage.Source = img;
+            ArtBorder.Background = new ImageBrush(img) { Stretch = Stretch.UniformToFill };
+            if (np.Palette.Count > 0)
+            {
+                ArtGlow.Color = ToMedia(np.Palette[0]);
+                ArtGlow.Opacity = 0.85;
+            }
         }
         FillSwatches(ArtPalette, np?.Palette ?? [], 18);
     }
@@ -311,5 +340,49 @@ public partial class MainWindow : Window
         }
     }
 
-    void UpdateSyncButton() => SyncButton.Content = _engine.IsStreaming ? "Stop light sync" : "Start light sync";
+    void UpdateSyncButton()
+    {
+        SyncButton.Content = _engine.IsStreaming ? "Stop light sync" : "Start light sync";
+        SyncButton.Style = (Style)FindResource(_engine.IsStreaming ? "StopButton" : "PrimaryButton");
+    }
+
+    /// <summary>
+    /// For docs: <c>Thump.exe --screenshot out.png [--tab Colors]</c> renders the window to a PNG after a few
+    /// seconds of live audio, then exits without saving settings.
+    /// </summary>
+    async Task MaybeTakeScreenshotAsync()
+    {
+        var args = Environment.GetCommandLineArgs();
+        int i = Array.IndexOf(args, "--screenshot");
+        if (i < 0 || i + 1 >= args.Length) return;
+        int t = Array.IndexOf(args, "--tab");
+        if (t > 0 && t + 1 < args.Length)
+            Tabs.SelectedItem = Tabs.Items.OfType<TabItem>().FirstOrDefault(x => (string)x.Header == args[t + 1]) ?? Tabs.SelectedItem;
+
+        await Task.Delay(6000);
+        var root = (FrameworkElement)Content;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var bmp = new RenderTargetBitmap((int)(root.ActualWidth * dpi.DpiScaleX), (int)(root.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        var bg = new DrawingVisual();
+        using (var dc = bg.RenderOpen())
+            dc.DrawRectangle(Background, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+        bmp.Render(bg);
+        bmp.Render(root);
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(bmp));
+        using (var fs = File.Create(args[i + 1])) enc.Save(fs);
+        _skipSave = true;
+        Close();
+    }
+
+    // Windows 10 draws a white title bar unless the window opts into dark mode.
+    void UseDarkTitleBar()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        int on = 1;
+        if (DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)) != 0) // DWMWA_USE_IMMERSIVE_DARK_MODE
+            DwmSetWindowAttribute(hwnd, 19, ref on, sizeof(int));      // same, Windows 10 before 20H1
+    }
+
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 }

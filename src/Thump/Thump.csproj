@@ -12,12 +12,18 @@
     <!-- WPF0001: Fluent ThemeMode is still flagged experimental -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/thump.ico</ApplicationIcon>
     <AssemblyName>Thump</AssemblyName>
     <Version>0.1.0</Version>
     <Product>Thump</Product>
     <Description>Bass-first music and screen sync for Philips Hue</Description>
     <Copyright>MIT License</Copyright>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets/thump.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Thump.Tests" />
