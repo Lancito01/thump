@@ -1,29 +1,36 @@
 # Roadmap
 
-## Next: clap detection ("sync lights to only claps")
+## Done in 0.3
 
-Teach the per-song model to learn the track's **clap/snare** alongside the kick, so a light role can follow claps only.
+- Kick and clap/snare detection rebuilt sound-first: a confidence per hit, the rhythm only nudges borderline sounds,
+  a ring-out check labels what the models learn from, and a drum that hasn't been heard yet never flashes.
+- Tempo followed from every onset with its own confidence (fixes the "locked ↔ learning" flip-flop: the grid used to
+  anchor on a bass note and the learned pattern pointed at the wrong 16ths after every relock).
+- *Clap* light role, CLAP LED, confidence readout in the live panel.
+- Opt-in "Remember songs" with a disk cap, least recently played forgotten first.
 
-Plan, reusing what `src/Thump/Audio/KickDetector.cs` already does for kicks:
+## Next: a shipped prior for "what a kick / clap sounds like"
 
-- **Onset band:** claps and snares live roughly in 1–5 kHz (body around 200–400 Hz for snares). Compute a second
-  onset strength there, normalised by its own recent peak, the same way `KickBandOnset` does for 40–130 Hz.
-- **Timbre:** reuse the 12-band fingerprint (`ComputeTimbre`). Keep a clap template plus a "not clap" template (hats,
-  vocal consonants, synth stabs).
-- **Rhythm prior:** claps sit on beats 2 and 4. Reuse the locked beat grid from the kick model and learn per-slot
-  probability over a *bar* (16 slots), not a beat, so 2-and-4 can be told apart from 1-and-3. This needs a bar/downbeat
-  estimate: take the bar phase from where kicks and claps alternate.
-- **Probably refactor** `KickDetector` into a generic `HitDetector` (band, templates, slot prior) with `Kick` and
-  `Clap` instances; tempo/grid stays owned by the kick instance.
-- **Output:** add `ClapEnvelope` / `ClapCount` to `AudioFeatures`, a `Clap` value to `LightRole` and the roles
-  description on the Lights tab, plus a CLAP pill next to KICK in the live panel.
-- **Tests:** extend the synthetic generator in `tests/Thump.Tests/KickDetectionTests.cs` with a clap (filtered noise
-  burst plus a short tonal body) on 2 and 4, with hats as decoys; check recall and false positives as for kicks. Then
-  check on real music with `RealMusicBench` (`THUMP_WAV`).
+The first seconds of a song rely on three hand-written cues per drum (where its energy sits, whether it punches out
+of the mix, how it rings out). A tiny classifier trained offline could replace them:
+
+- **Input:** the features the detectors already compute at each onset (14-band rise, absolute spectral shape, the
+  ring-out levels a few hops later). **Output:** P(kick), P(clap/snare), P(neither). A 2-layer MLP of a few thousand
+  weights runs in microseconds in plain C#, no ML runtime needed.
+- **Training data is the hard part.** Public drum-transcription sets (ENST-Drums, MDB Drums, IDMT-SMT-Drums, ADTOF,
+  E-GMD) are mostly acoustic kits or have non-commercial licences, which matters for weights we ship. Options: render
+  our own labelled loops from royalty-free one-shots across genres, and/or label real tracks semi-automatically with
+  the current detector plus manual review.
+- **It would only replace the generic prior.** The per-song models keep learning the actual track, and the ring-out
+  check keeps labelling, so a wrong prior gets corrected within a few bars.
+- **Measure first:** collect a set of real tracks with hand-marked first-kick times and count false flashes before
+  the first real kick, with and without the classifier.
 
 ## Other ideas
 
-- BPM on some tracks jumps between readings (seen on "IRONIC" by ero808: 146 → 125). Record it and check with
-  `RealMusicBench`.
+- Re-check "IRONIC" by ero808, where the BPM used to jump between readings (146 → 125), against the new tempo tracker
+  with `RealMusicBench`.
+- Bar/downbeat tracking, so claps on 2 and 4 can be told from kicks on 1 and 3 by position as well as sound.
+- Long-tailed kicks (hardstyle, 808): judge ring-out over a longer window when the kick band stays clean.
 - Remove the startup Run-key entry on uninstall, so it doesn't linger if "Start with Windows" was on.
 - Code-sign the MSI to stop SmartScreen warnings.

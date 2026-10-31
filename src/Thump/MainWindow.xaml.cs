@@ -81,6 +81,7 @@ public partial class MainWindow : Window
         _uiTimer.Tick += (_, _) => RenderUi();
 
         VersionText.Text = $"Thump {Updater.Current.ToString(3)}" + (Updater.IsInstalled ? "" : " (portable)");
+        UpdateSongCacheStatus();
         Loaded += async (_, _) => await MaybeTakeScreenshotAsync();
         Closing += OnClosing;
     }
@@ -152,11 +153,28 @@ public partial class MainWindow : Window
                 try { Startup.Apply(_settings.StartWithWindows); }
                 catch (Exception ex) { UpdateStatus.Text = $"Couldn't change startup: {ex.Message}"; }
                 break;
+            case nameof(AppSettings.RememberSongs) or nameof(AppSettings.SongCacheMb):
+                UpdateSongCacheStatus();
+                break;
             case nameof(AppSettings.CheckForUpdates):
                 if (_settings.CheckForUpdates) { _updateTimer.Start(); _ = CheckForUpdatesAsync(manual: false); }
                 else _updateTimer.Stop();
                 break;
         }
+    }
+
+    void UpdateSongCacheStatus()
+    {
+        // Trim right away when the cap is lowered, so the number shown is what is really on disk.
+        if (_settings.RememberSongs) _engine.Songs.Trim((long)(_settings.SongCacheMb * 1024 * 1024));
+        var (songs, bytes) = _engine.Songs.Usage();
+        SongCacheStatus.Text = songs == 0 ? "No songs remembered." : $"{songs:N0} song{(songs == 1 ? "" : "s")}, {bytes / 1024.0:N0} KB";
+    }
+
+    void ForgetSongs_Click(object sender, RoutedEventArgs e)
+    {
+        _engine.Songs.Clear();
+        UpdateSongCacheStatus();
     }
 
     void UpdateColorPanels()
@@ -213,16 +231,27 @@ public partial class MainWindow : Window
         {
             for (int i = 0; i < _meters.Count; i++)
                 _meters[i].Height = Math.Max(4, f.Levels[i] * 84);
-            double k = f.KickEnvelope;
-            KickPill.Background = new SolidColorBrush(Lerp(TrackColor, Pink, k));
-            KickText.Foreground = new SolidColorBrush(Lerp(Color.FromRgb(0x8C, 0x8C, 0xA1), System.Windows.Media.Colors.White, k));
-            BpmText.Text = f.BeatLocked ? $"{f.Bpm:0} BPM · locked to the beat"
-                : f.Learned < 1 ? $"learning this track’s kick… {f.Learned:0%}"
-                : "kick learned · finding the beat…";
+            Flash(KickPill, KickText, f.KickEnvelope);
+            Flash(ClapPill, ClapText, f.ClapEnvelope);
+            BpmText.Text = f.BeatLocked ? $"{f.Bpm:0} BPM · tempo confidence {f.TempoConfidence:0%}"
+                : f.Bpm > 0 ? $"~{f.Bpm:0} BPM · checking the beat… {f.TempoConfidence:0%}"
+                : "listening for the beat…";
+            ModelText.Text = $"Kick: {Learned(f.KickLearned, f.KickConfidence)}  ·  Clap/snare: {Learned(f.ClapLearned, f.ClapConfidence)}"
+                             + (f.Remembered ? "  ·  remembered from last time" : "");
         }
 
         if (_tick % 15 == 0) RenderPaletteSwatches();
     }
+
+    void Flash(Border pill, TextBlock text, double env)
+    {
+        pill.Background = new SolidColorBrush(Lerp(TrackColor, Pink, env));
+        text.Foreground = new SolidColorBrush(Lerp(Color.FromRgb(0x8C, 0x8C, 0xA1), System.Windows.Media.Colors.White, env));
+    }
+
+    /// <summary>How far the model has got, and how sure it was about the last hit it flashed for.</summary>
+    static string Learned(double learned, double lastConfidence) =>
+        learned <= 0 ? "not heard yet" : learned < 1 ? $"learning {learned:0%}" : $"last hit {lastConfidence:0%} sure";
 
     void RenderPaletteSwatches()
     {

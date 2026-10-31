@@ -8,17 +8,25 @@ public enum Band { Sub, Bass, LowMid, Mid, High, Air }
 
 /// <summary>A snapshot of what the music is doing right now.</summary>
 public sealed record AudioFeatures(
-    double[] Levels,      // per band, 0..1 after adaptive normalisation
-    double KickEnvelope,  // 1 on a detected kick, decaying to 0
-    long KickCount,       // increments on every kick
-    double Bpm,           // followed tempo, 0 if unknown
-    bool BeatLocked,      // kicks are landing on a steady (possibly drifting) grid
-    double Learned);      // 0..1, how much the kick model knows about this track
+    double[] Levels,         // per band, 0..1 after adaptive normalisation
+    double KickEnvelope,     // 1 on a detected kick, decaying to 0
+    long KickCount,          // increments on every kick
+    double ClapEnvelope,     // the same for claps and snares
+    long ClapCount,
+    double Bpm,              // followed tempo, 0 if unknown
+    bool BeatLocked,         // hits are landing where the beat grid predicts
+    double TempoConfidence,  // 0..1, how well recent hits matched the predicted grid
+    double KickLearned,      // 0..1, how much the kick model knows about this track
+    double ClapLearned,
+    double KickConfidence,   // 0..1, how sure it was about the latest kick
+    double ClapConfidence,
+    bool Remembered);        // this track's models came from the song cache
 
 /// <summary>
-/// Captures whatever Windows is playing (WASAPI loopback) and turns it into band levels plus kick-drum detection.
-/// Unlike an "average loudness" approach, every band is normalised on its own, so a rumbling sub-bass line
-/// isn't drowned out by hats and synths. Kicks come from <see cref="KickDetector"/>, which learns each track.
+/// Captures whatever Windows is playing (WASAPI loopback) and turns it into band levels plus kick and clap/snare
+/// detection. Unlike an "average loudness" approach, every band is normalised on its own, so a rumbling sub-bass line
+/// isn't drowned out by hats and synths. Hits come from two <see cref="HitDetector"/>s that learn each track by ear,
+/// and the tempo from a <see cref="BeatTracker"/> that follows their confident hits.
 /// </summary>
 public sealed class AudioAnalyzer : IDisposable
 {
@@ -49,14 +57,20 @@ public sealed class AudioAnalyzer : IDisposable
     WasapiLoopbackCapture? _capture;
     int _sampleRate = 48000;
 
-    readonly KickDetector _kick = new();
-    double _kickEnv;
-    long _kickCount;
+    readonly SpectralFeatures _spectrum = new();
+    readonly HitDetector _kick = HitDetector.Kick();
+    readonly HitDetector _clap = HitDetector.Clap();
+    readonly BeatTracker _beat = new();
+    double _kickEnv, _clapEnv;
+    long _kickCount, _clapCount;
     long _samplesSeen;
+    bool _remembered;
 
-    /// <summary>1 = default; higher accepts hits that are less kick-like.</summary>
+    /// <summary>1 = default; higher accepts sounds the model is less sure are kicks.</summary>
     public double KickSensitivity { get; set; } = 1.0;
     public double KickDecayMs { get; set; } = 180;
+    public double ClapSensitivity { get; set; } = 1.0;
+    public double ClapDecayMs { get; set; } = 140;
     /// <summary>Seconds for the per-band auto-gain to forget a loud peak.</summary>
     public double AdaptSeconds { get; set; } = 6;
 
@@ -93,7 +107,9 @@ public sealed class AudioAnalyzer : IDisposable
         lock (_lock)
         {
             // Let levels fall back to silence if loopback stops delivering (WASAPI sends nothing when idle).
-            return new AudioFeatures((double[])_levels.Clone(), _kickEnv, _kickCount, _kick.Bpm, _kick.Locked, _kick.Confidence);
+            return new AudioFeatures((double[])_levels.Clone(), _kickEnv, _kickCount, _clapEnv, _clapCount,
+                _beat.Bpm, _beat.Locked, _beat.Confidence, _kick.Learned, _clap.Learned,
+                _kick.LastConfidence, _clap.LastConfidence, _remembered);
         }
     }
 
@@ -103,6 +119,7 @@ public sealed class AudioAnalyzer : IDisposable
         lock (_lock)
         {
             _kickEnv *= Math.Exp(-dtSeconds * 1000 / Math.Max(20, KickDecayMs));
+            _clapEnv *= Math.Exp(-dtSeconds * 1000 / Math.Max(20, ClapDecayMs));
             if (Environment.TickCount64 - _lastAnalyzeMs > 250)
                 for (int b = 0; b < _levels.Length; b++) _levels[b] *= Math.Exp(-dtSeconds * 8);
         }
@@ -185,11 +202,23 @@ public sealed class AudioAnalyzer : IDisposable
             }
 
             _kick.Sensitivity = KickSensitivity;
-            if (_kick.Process(_fft, FftSize, binHz, dt, _samplesSeen, Hop, _sampleRate))
+            _clap.Sensitivity = ClapSensitivity;
+            _spectrum.Compute(_fft, FftSize, binHz, dt);
+            double time = (double)(_samplesSeen - Hop) / _sampleRate; // the hop the detectors are deciding about
+            if (_kick.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate) is { } kick)
             {
                 _kickEnv = 1;
                 _kickCount++;
+                if (kick >= 0.6) _beat.Observe(time, 1);
             }
+            if (_clap.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate) is { } clap)
+            {
+                _clapEnv = 1;
+                _clapCount++;
+                if (clap >= 0.65) _beat.Observe(time, 0.6);
+            }
+            _beat.Feed(_spectrum.Flux, time);
+            _beat.Tick(time, dt);
         }
     }
 
@@ -202,10 +231,31 @@ public sealed class AudioAnalyzer : IDisposable
         return sum / Math.Max(1, z - a + 1);
     }
 
-    /// <summary>Forget everything learned about the current track's kick (call on track change).</summary>
-    public void ResetKickLearning()
+    /// <summary>A new track: forget the last one's drums and tempo, or pick up what was remembered about this one.</summary>
+    public void StartTrack(SongModel? remembered = null)
     {
-        lock (_lock) _kick.Reset();
+        lock (_lock)
+        {
+            _kick.Reset();
+            _clap.Reset();
+            _beat.Reset(remembered?.BeatPeriod ?? 0);
+            _remembered = remembered != null;
+            if (remembered == null) return;
+            _kick.Import(remembered.Kick);
+            _clap.Import(remembered.Clap);
+        }
+    }
+
+    /// <summary>What has been learned about the current track so far.</summary>
+    public SongModel ExportModel()
+    {
+        lock (_lock)
+            return new SongModel
+            {
+                BeatPeriod = _beat.Locked ? _beat.Period : 0,
+                Kick = _kick.Export(),
+                Clap = _clap.Export(),
+            };
     }
 
     /// <summary>Feeds mono samples directly (used by tests and offline analysis).</summary>

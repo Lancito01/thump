@@ -74,6 +74,10 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,10">
+                                <Border x:Name="ClapPill" DockPanel.Dock="Right" CornerRadius="9" Padding="10,2" Margin="6,0,0,0" Background="{StaticResource Track}"
+                                        ToolTip="Claps and snares">
+                                    <TextBlock x:Name="ClapText" Text="CLAP" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
+                                </Border>
                                 <Border x:Name="KickPill" DockPanel.Dock="Right" CornerRadius="9" Padding="10,2" Background="{StaticResource Track}">
                                     <TextBlock x:Name="KickText" Text="KICK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
                                 </Border>
@@ -82,6 +86,7 @@
                             <UniformGrid x:Name="BandMeters" Rows="1" Height="84"/>
                             <UniformGrid x:Name="BandLabels" Rows="1" Margin="0,6,0,0"/>
                             <TextBlock x:Name="BpmText" Margin="0,10,0,0" FontSize="12" Foreground="{StaticResource Muted}"/>
+                            <TextBlock x:Name="ModelText" Margin="0,2,0,0" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -166,6 +171,7 @@
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Mix"/> — all bands, weighted by the Audio tab, plus kick punch.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Bass"/> — sub + bass only, plus kick punch.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Kick"/> — flashes on detected kicks, dark in between.<LineBreak/>
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Clap"/> — flashes on claps and snares, dark in between.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Mids / Highs"/> — synths &amp; vocals / hats &amp; cymbals.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Ambient"/> — steady colour, ignores the music.
                                 </TextBlock>
@@ -212,11 +218,13 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <TextBlock Text="Kick drum" Style="{StaticResource CardTitle}"/>
-                                <TextBlock Style="{StaticResource Hint}" Text="The kick detector learns each track: how hard its kick hits, what it sounds like, the tempo (even as it drifts) and the rhythm pattern. It starts over on every track change."/>
+                                <TextBlock Text="Kick, clap and snare" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Thump learns each track by ear: what its kick and its clap or snare sound like, how hard they hit, and the tempo (even as it drifts). Every hit gets a confidence, and the lights only flash when it is sure the sound was the drum, wherever it lands in the bar. Until it has heard the real thing (say, an intro with no drums yet), those lights stay dark."/>
                                 <local:LabeledSlider Label="Kick punch" Value="{Binding KickPunch}" Minimum="0" Maximum="1.5" Format="0%" Tip="Extra flash added to Mix and Bass lights on each kick."/>
-                                <local:LabeledSlider Label="Kick sensitivity" Value="{Binding KickSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Raise if kicks are missed, lower if basslines or claps trigger it."/>
+                                <local:LabeledSlider Label="Kick sensitivity" Value="{Binding KickSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Raise if kicks are missed, lower if bass notes trigger it."/>
                                 <local:LabeledSlider Label="Kick decay" Value="{Binding KickDecayMs}" Minimum="40" Maximum="600" Format="0 ms" Tip="Length of each kick flash."/>
+                                <local:LabeledSlider Label="Clap sensitivity" Value="{Binding ClapSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Raise if claps or snares are missed, lower if hi-hats or vocals trigger it."/>
+                                <local:LabeledSlider Label="Clap decay" Value="{Binding ClapDecayMs}" Minimum="40" Maximum="600" Format="0 ms" Tip="Length of each clap flash."/>
                             </StackPanel>
                         </Border>
                         <Button Content="Reset audio settings" HorizontalAlignment="Left" Click="ResetAudio_Click"/>
@@ -283,6 +291,19 @@
                                 <CheckBox Content="Keep syncing in the tray when I close the window" IsChecked="{Binding RunInBackground}" Margin="0,4"/>
                                 <CheckBox Content="Start Thump with Windows (hidden in the tray)" IsChecked="{Binding StartWithWindows}" Margin="0,4"/>
                                 <CheckBox Content="Automatically connect to my lights and start syncing when Thump starts" IsChecked="{Binding AutoStartSync}" Margin="0,4"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Remember songs" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Off unless you turn it on. Thump keeps what it learned about each song (what its kick and clap sound like, how hard they hit, its tempo) in a small file on this PC, about 2 KB per song, so the next time it plays the lights are right from the first beat. When the space below fills up, the songs you have not played for the longest are forgotten first."/>
+                                <CheckBox Content="Remember what Thump learns about each song" IsChecked="{Binding RememberSongs}" Margin="0,4"/>
+                                <local:LabeledSlider Label="Disk space" Value="{Binding SongCacheMb}" Minimum="1" Maximum="500" Format="0 MB" IsEnabled="{Binding RememberSongs}"
+                                                     Tip="Up to this much; 50 MB holds about 25,000 songs."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Forget all songs" Click="ForgetSongs_Click"/>
+                                    <TextBlock x:Name="SongCacheStatus" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">

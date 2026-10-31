@@ -5,3 +5,4 @@ publish/
 .vs/
 *.wav
 TestResults/
+*.mp3

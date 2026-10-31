@@ -10,7 +10,7 @@ namespace Thump;
 
 public enum ColorSource { Preset, AlbumArt, Screen, Custom }
 public enum ColorMotion { StepOnKick, Drift, Static }
-public enum LightRole { Mix, Bass, Kick, Mids, Highs, Ambient }
+public enum LightRole { Mix, Bass, Kick, Clap, Mids, Highs, Ambient }
 
 public abstract class Observable : INotifyPropertyChanged
 {
@@ -56,7 +56,8 @@ public sealed class AppSettings : Observable
     const int CurrentVersion = 2;
 
     // App behaviour
-    bool _runInBackground = true, _startWithWindows, _autoStartSync, _checkForUpdates, _autoInstallUpdates, _trayHintShown;
+    bool _runInBackground = true, _startWithWindows, _autoStartSync, _checkForUpdates, _autoInstallUpdates, _trayHintShown, _rememberSongs;
+    double _songCacheMb = 50;
     /// <summary>Closing the window hides it to the tray; sync keeps running until Quit.</summary>
     public bool RunInBackground { get => _runInBackground; set => Set(ref _runInBackground, value); }
     public bool StartWithWindows { get => _startWithWindows; set => Set(ref _startWithWindows, value); }
@@ -66,6 +67,10 @@ public sealed class AppSettings : Observable
     /// <summary>Opt-in: install downloaded updates without asking (only while not syncing).</summary>
     public bool AutoInstallUpdates { get => _autoInstallUpdates; set => Set(ref _autoInstallUpdates, value); }
     public bool TrayHintShown { get => _trayHintShown; set => Set(ref _trayHintShown, value); }
+    /// <summary>Opt-in: keep what was learned about each song on disk, so the next play starts out knowing it.</summary>
+    public bool RememberSongs { get => _rememberSongs; set => Set(ref _rememberSongs, value); }
+    /// <summary>Disk space for remembered songs; the least recently played are forgotten first.</summary>
+    public double SongCacheMb { get => _songCacheMb; set => Set(ref _songCacheMb, value); }
 
     // Bridge
     string? _bridgeIp, _username, _clientKey, _applicationId, _areaId;
@@ -79,7 +84,7 @@ public sealed class AppSettings : Observable
 
     // Audio
     string? _audioDeviceId;
-    double _gain = 1.2, _kickPunch = 0.6, _kickSensitivity = 1.0, _kickDecayMs = 180;
+    double _gain = 1.2, _kickPunch = 0.6, _kickSensitivity = 1.0, _kickDecayMs = 180, _clapSensitivity = 1.0, _clapDecayMs = 140;
     double _attackMs = 15, _releaseMs = 160, _contrast = 1.8, _adaptSeconds = 6;
     double _minBrightness = 0.02, _maxBrightness = 1.0;
     public string? AudioDeviceId { get => _audioDeviceId; set => Set(ref _audioDeviceId, value); }
@@ -88,6 +93,8 @@ public sealed class AppSettings : Observable
     public double KickPunch { get => _kickPunch; set => Set(ref _kickPunch, value); }
     public double KickSensitivity { get => _kickSensitivity; set => Set(ref _kickSensitivity, value); }
     public double KickDecayMs { get => _kickDecayMs; set => Set(ref _kickDecayMs, value); }
+    public double ClapSensitivity { get => _clapSensitivity; set => Set(ref _clapSensitivity, value); }
+    public double ClapDecayMs { get => _clapDecayMs; set => Set(ref _clapDecayMs, value); }
     public double AttackMs { get => _attackMs; set => Set(ref _attackMs, value); }
     public double ReleaseMs { get => _releaseMs; set => Set(ref _releaseMs, value); }
     public double Contrast { get => _contrast; set => Set(ref _contrast, value); }
@@ -128,6 +135,7 @@ public sealed class AppSettings : Observable
         var d = new AppSettings();
         for (int i = 0; i < Bands.Count; i++) Bands[i].Weight = d.Bands[i].Weight;
         Gain = d.Gain; KickPunch = d.KickPunch; KickSensitivity = d.KickSensitivity; KickDecayMs = d.KickDecayMs;
+        ClapSensitivity = d.ClapSensitivity; ClapDecayMs = d.ClapDecayMs;
         AttackMs = d.AttackMs; ReleaseMs = d.ReleaseMs; Contrast = d.Contrast; AdaptSeconds = d.AdaptSeconds;
         MinBrightness = d.MinBrightness; MaxBrightness = d.MaxBrightness;
     }

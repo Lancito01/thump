@@ -18,6 +18,10 @@ public sealed class SyncEngine : IDisposable
     readonly AppSettings _settings;
     readonly AudioAnalyzer _audio = new();
     readonly AlbumArtSource _albumArt = new();
+    readonly SongCache _songs = new(SongCache.DefaultDir);
+    readonly object _trackLock = new();
+    string? _trackKey;
+    NowPlaying? _track;
 
     Thread? _thread;
     volatile bool _running;
@@ -33,6 +37,7 @@ public sealed class SyncEngine : IDisposable
 
     public event Action<string>? Status;
     public AlbumArtSource AlbumArt => _albumArt;
+    public SongCache Songs => _songs;
     public bool IsStreaming => _streamer != null;
     public string AudioDeviceName => _audio.DeviceName;
 
@@ -45,8 +50,37 @@ public sealed class SyncEngine : IDisposable
     public SyncEngine(AppSettings settings)
     {
         _settings = settings;
-        // New track → new kick drum: relearn its strength and tempo from scratch.
-        _albumArt.Changed += _ => _audio.ResetKickLearning();
+        _albumArt.Changed += OnTrackChanged;
+    }
+
+    /// <summary>
+    /// New track → new drums and tempo: remember what was learned about the last one (if the user opted in) and start
+    /// over, or from what was remembered about this one. Only the artist and title count: a thumbnail arriving late or
+    /// a pause (no media session for a moment) is the same song and keeps everything it learned.
+    /// </summary>
+    void OnTrackChanged(NowPlaying? np)
+    {
+        if (np == null) return;
+        var key = SongCache.KeyFor(np.Artist, np.Title);
+        lock (_trackLock)
+        {
+            if (key != null && key == _trackKey) return;
+            SaveCurrentSong();
+            _trackKey = key;
+            _track = np;
+            _audio.StartTrack(key != null && _settings.RememberSongs ? _songs.TryLoad(key) : null);
+        }
+    }
+
+    void SaveCurrentSong()
+    {
+        if (!_settings.RememberSongs || _trackKey == null || _track == null) return;
+        var model = _audio.ExportModel();
+        if (model.Kick.Learned < 16 && model.Clap.Learned < 16) return; // not worth remembering yet
+        model.Key = _trackKey;
+        model.Title = _track.Title;
+        model.Artist = _track.Artist;
+        _songs.Save(model, (long)(_settings.SongCacheMb * 1024 * 1024));
     }
 
     /// <summary>Starts audio capture and the render loop (preview only until <see cref="StartStreamingAsync"/>).</summary>
@@ -129,6 +163,8 @@ public sealed class SyncEngine : IDisposable
                 var s = _settings;
                 _audio.KickSensitivity = s.KickSensitivity;
                 _audio.KickDecayMs = s.KickDecayMs;
+                _audio.ClapSensitivity = s.ClapSensitivity;
+                _audio.ClapDecayMs = s.ClapDecayMs;
                 _audio.AdaptSeconds = s.AdaptSeconds;
                 _audio.Tick(dt);
                 var f = _audio.Snapshot();
@@ -233,6 +269,7 @@ public sealed class SyncEngine : IDisposable
             {
                 LightRole.Bass => bass + s.KickPunch * kick,
                 LightRole.Kick => kick,
+                LightRole.Clap => f.ClapEnvelope,
                 LightRole.Mids => mids,
                 LightRole.Highs => highs,
                 LightRole.Ambient => 1,
@@ -299,6 +336,7 @@ public sealed class SyncEngine : IDisposable
     {
         _running = false;
         _thread?.Join(500);
+        lock (_trackLock) SaveCurrentSong();
         StopStreamingAsync().Wait(2000);
         _audio.Dispose();
         _albumArt.Dispose();
