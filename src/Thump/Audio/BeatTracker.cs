@@ -7,8 +7,9 @@ namespace Thump.Audio;
 /// raises <see cref="Confidence"/>, late or early nudges the tempo (so speed-ups and slow-downs are followed), and
 /// onsets that keep landing between 16ths lower it until the grid is worked out again. Because it doesn't wait for a
 /// drum, the tempo is known from the first bars of an intro.
-/// <para>The grid only ever informs the detectors ("this sound was on the beat"), weighted by how sure the tempo is;
-/// it never decides on its own what is a hit.</para>
+/// <para>The grid spans two beats (8 16ths), so the detectors can learn that a clap falls on every other beat; which
+/// beat is "1" doesn't matter. It only ever informs them ("this sound was where this drum usually is"): it never
+/// makes a hit out of nothing, so a fake drop stays dark.</para>
 /// </summary>
 public sealed class BeatTracker
 {
@@ -34,6 +35,8 @@ public sealed class BeatTracker
     public double Period => _period;
     /// <summary>Bumped whenever the grid is rebuilt; learned rhythm patterns are relative to it and start over.</summary>
     public int GridVersion { get; private set; }
+    /// <summary>16ths in one cycle of the grid: two beats.</summary>
+    public const int Slots = 8;
 
     public void Reset(double hintPeriod = 0)
     {
@@ -47,7 +50,7 @@ public sealed class BeatTracker
         GridVersion++;
     }
 
-    /// <summary>Where <paramref name="t"/> falls on the grid: which 16th of the beat, and whether it's close to one.</summary>
+    /// <summary>Where <paramref name="t"/> falls on the grid: which 16th of the two-beat cycle, and whether it's close to one.</summary>
     public bool TryGetSlot(double t, out int slot, out bool onGrid)
     {
         slot = -1;
@@ -55,7 +58,7 @@ public sealed class BeatTracker
         if (_period <= 0) return false;
         double pos = (t - _anchor) / _period * 4, n = Math.Round(pos);
         onGrid = Math.Abs(pos - n) < 0.3;
-        slot = (int)(((long)n % 4 + 4) % 4);
+        slot = (int)(((long)n % Slots + Slots) % Slots);
         return true;
     }
 
@@ -102,10 +105,11 @@ public sealed class BeatTracker
             {
                 // Predicted vs actual: the error drives a small phase-locked loop.
                 double err = (pos - n) * _period / 4;
-                double beats = Math.Floor(n / 4);
+                // The anchor moves on in whole cycles, so every other beat stays every other beat.
+                double cycles = Math.Floor(n / Slots);
                 double old = _period;
                 _period = Math.Clamp(_period + 0.3 * weight * err / Math.Max(1, n / 4), 0.25, 1.5);
-                _anchor += beats * old + 0.5 * weight * err;
+                _anchor += cycles * Slots / 4 * old + 0.5 * weight * err;
                 double quality = Math.Exp(-err * err / (2 * 0.018 * 0.018));
                 Confidence += 0.08 * weight * (quality - Confidence);
                 _offGrid *= 1 - 0.5 * weight;
@@ -161,7 +165,12 @@ public sealed class BeatTracker
         }
 
         bool sameGrid = _period > 0 && Math.Abs(period / _period - 1) < 0.04 && Near(anchor - _anchor, _period, 0.03) > 0.5;
-        if (!sameGrid)
+        if (sameGrid)
+        {
+            // Same tempo and beats, just re-anchored: keep which beat is which, or the learned patterns would flip.
+            if (Math.Abs(Math.Round((anchor - _anchor) / _period)) % 2 == 1) anchor -= period;
+        }
+        else
         {
             GridVersion++;
             // The hits that built the grid already fit it: start halfway, and let the next few hits decide.

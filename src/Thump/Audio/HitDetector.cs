@@ -12,10 +12,10 @@ namespace Thump.Audio;
 /// be it (bass notes, hats, vocals). Each candidate is compared with both: a tiny nearest-template classifier.</item>
 /// <item><b>Strength</b>: how hard this track's drum hits, and how far it stands out from the other onsets in its
 /// band, so quiet and loud ones both work and a bassline with no kick under it isn't taken for one.</item>
-/// <item><b>Timing</b>: whether the sound landed on the beat grid, and how often the drum falls on that 16th of the
-/// beat, weighted by how sure the tempo is. This only nudges borderline sounds (a bass note right after the kick).
-/// A sound that is clearly the drum counts wherever it lands, so fills, rolls and the extra kick before a drop show
-/// up.</item>
+/// <item><b>Timing</b>: how often the drum falls on each 16th of a two-beat cycle (a house clap: every other beat; a
+/// kick: every beat). Before the tempo is locked this only nudges borderline sounds; once it is, a sound off this
+/// song's pattern needs to be unmistakably the drum. A short-term copy of the pattern follows what the drum is doing
+/// right now, so a roll or a breakdown that puts it on every beat lights up after a hit or two.</item>
 /// </list>
 /// It teaches itself only from hits it is sure about (self-training), so a doubtful sound can't drag the model off.
 /// Claps and snares are also checked against how they ring out a moment later (a clap rings for 100–200 ms, a hi-hat
@@ -52,6 +52,12 @@ public sealed class HitDetector
     double _prev1Strength, _prev2Strength;
     // Spectral flatness of the band in the latest two hops (the onset is picked one hop after its peak).
     double[] _mag = [];
+    // Percussive separation: the onset is measured on the band median-filtered across frequency, which keeps noise
+    // (claps, snares) and flattens a note's comb of harmonics down to the gaps between them.
+    readonly bool _percussive;
+    double[] _perc = [], _prevPerc = [];
+    readonly double[] _window = new double[2 * MedianHalf + 1];
+    const int MedianHalf = 8; // ±8 bins ≈ ±190 Hz
     double _flatness, _prevFlatness;
 
     /// <summary>Geometric over arithmetic mean: near 1 for noise spread evenly, lower for a few strong peaks.</summary>
@@ -74,8 +80,9 @@ public sealed class HitDetector
     double _typical;
     int _learned;
 
-    // How often the drum falls on each 16th of the beat, relative to the beat tracker's grid
-    readonly double[] _slotProb = [0.5, 0.5, 0.5, 0.5];
+    // How often the drum falls on each 16th of the beat tracker's two-beat cycle: over the song, and just lately
+    readonly double[] _slotProb = new double[BeatTracker.Slots];
+    readonly double[] _slotRecent = new double[BeatTracker.Slots];
     int _gridVersion = -1;
 
     readonly Queue<(double Value, long Sample)> _peaks = new();
@@ -97,8 +104,9 @@ public sealed class HitDetector
 
     HitDetector(double lowHz, double highHz, double fromHz, double toHz, double refractory, RingOut ring,
         Func<SpectralFeatures, double, double>? soundPrior = null, double bootstrapPrior = 0, double priorWeight = 0.4,
-        double labelPrior = double.NegativeInfinity)
+        double labelPrior = double.NegativeInfinity, bool percussive = false)
     {
+        _percussive = percussive;
         _priorWeight = priorWeight;
         _labelPrior = labelPrior;
         _bootstrapPrior = bootstrapPrior;
@@ -125,7 +133,8 @@ public sealed class HitDetector
             OtherBelow: double.NegativeInfinity, OtherAbove: 0.75), (s, _) => s.KickShape(), bootstrapPrior: 0.3);
 
     /// <summary>
-    /// Claps and snares: onsets in 1–6 kHz, fingerprinted from 190 Hz up (kick and bass don't matter). A clap or a
+    /// Claps and snares: onsets in 1–6 kHz, measured on the percussive part only (a synth or vocal note on top hardly
+    /// counts), fingerprinted from 190 Hz up (kick and bass don't matter). A clap or a
     /// snare's wires are noise: at the hit the 1–6 kHz band is flat (spectral flatness ≳ 0.75), where a synth, piano or
     /// vocal note is a comb of harmonics and a hi-hat leaves the low end of the band empty (≲ 0.7). It also rattles mostly in the mids (hi-hats sit above 5 kHz) and rings
     /// out for 100–200 ms (a hat or a click is gone in 30). Those cues stay in force all along, not just at the start.
@@ -133,7 +142,7 @@ public sealed class HitDetector
     public static HitDetector Clap() =>
         new(1000, 6000, 190, 16000, 0.07, new RingOut(6, Lowest: false, DrumMin: 0.15, DrumMax: 0.85, OtherBelow: 0.1, OtherAbove: 1),
             (s, flatness) => Math.Clamp(2.5 * (s.MidShare() - 0.3), -1, 0.5) + Math.Clamp(10 * (flatness - 0.75), -2, 0.4),
-            bootstrapPrior: 0.7, priorWeight: 1, labelPrior: 0);
+            bootstrapPrior: 0.7, priorWeight: 1, labelPrior: 0, percussive: true);
 
     public void Reset()
     {
@@ -145,6 +154,7 @@ public sealed class HitDetector
         Array.Clear(_otherTemplate);
         _otherCount = 0;
         Array.Fill(_slotProb, 0.5);
+        Array.Fill(_slotRecent, 0.5);
         _unexplained = 0;
         _shapeRate = 0;
         LastConfidence = 0;
@@ -176,6 +186,7 @@ public sealed class HitDetector
             // New grid, new phase: a pattern learned on the old one would point at the wrong 16ths.
             _gridVersion = beat.GridVersion;
             Array.Fill(_slotProb, 0.5);
+            Array.Fill(_slotRecent, 0.5);
         }
 
         if (!isPeak || cand < MinOnset) return null;
@@ -186,7 +197,7 @@ public sealed class HitDetector
         Fingerprint(spectrum.Previous);
         double sens = Math.Max(0.2, Sensitivity);
         double prior = _soundPrior?.Invoke(spectrum, _prevFlatness) ?? 0;
-        double rel, sim = 0, grid = 0, confidence;
+        double rel, sim = 0, grid = 0, margin = 0, confidence;
         bool accept;
 
         if (_learned < Bootstrap)
@@ -210,10 +221,16 @@ public sealed class HitDetector
         {
             rel = cand / Math.Max(1e-6, _typical);
             sim = Cosine(_feature, _hitTemplate) - (_otherCount > 4 ? Cosine(_feature, _otherTemplate) : 0.5);
-            // Between 16ths is a little evidence against; on a 16th where this drum usually is, a little for; on one
-            // where it rarely is, a little against. All as far as the tempo can be trusted.
+            // Where this drum usually is (or has been for the last few hits): for; where it rarely is, or between
+            // 16ths: against. Until the tempo is locked only a little, as far as it can be trusted; once locked, enough
+            // that a sound off the pattern has to be unmistakably the drum.
             if (beat.TryGetSlot(time, out int slot, out bool onGrid))
-                grid =beat.Confidence * (onGrid ? Math.Clamp(0.5 * Math.Log(0.4 + 1.2 * _slotProb[slot]), -0.15, 0.2) : -0.3);
+            {
+                double p = Math.Max(_slotProb[slot], _slotRecent[slot]);
+                grid = beat.Locked
+                    ? onGrid ? Math.Clamp(Math.Log(0.2 + 1.6 * p), -1.2, 0.2) : -0.8
+                    : beat.Confidence * (onGrid ? Math.Clamp(0.5 * Math.Log(0.4 + 1.2 * p), -0.15, 0.2) : -0.3);
+            }
 
             // Hard on the heels of the last hit (well under half a beat) it takes a little more to be believed: a roll
             // is clearly the drum every time, a bass note right after the kick is only half-convincing.
@@ -227,7 +244,7 @@ public sealed class HitDetector
             // out, and (a little) on the beat. The timing term can move the bar by only about ±30%, so it tips
             // doubtful sounds but never vetoes a clear one. The generic sound prior steps back now that the model
             // knows this track's drum (except for claps, where it keeps ruling out sounds that plainly aren't noise).
-            double margin = Math.Log(Math.Max(rel, 1e-3)) + 1.5 * Math.Log(Math.Max(1 + sim, 1e-3)) + standOut
+            margin = Math.Log(Math.Max(rel, 1e-3)) + 1.5 * Math.Log(Math.Max(1 + sim, 1e-3)) + standOut
                             + grid + crowded + _priorWeight * prior + Math.Log(sens / 0.8);
             confidence = 1 / (1 + Math.Exp(-4 * margin));
             // Also dark while what sounds like the drum mostly hasn't been dying away like one (a section where the
@@ -235,7 +252,13 @@ public sealed class HitDetector
             accept = confidence >= 0.5 && sinceLast >= _refractory && _shapeRate >= ShapeGate;
 
             if (onGrid && rel > 0.4)
-                _slotProb[slot] = Math.Clamp(_slotProb[slot] + 0.06 * ((accept ? 1 : 0) - _slotProb[slot]), 0.1, 0.95);
+            {
+                // The song's pattern learns from what was let through; the short-term one from what sounded
+                // unmistakably like the drum regardless of timing, so a new pattern can win against the old one.
+                bool sounded = margin - grid > 0.5;
+                _slotProb[slot] = Math.Clamp(_slotProb[slot] + 0.08 * ((accept ? 1 : 0) - _slotProb[slot]), 0.05, 0.95);
+                _slotRecent[slot] = Math.Clamp(_slotRecent[slot] + 0.3 * ((sounded ? 1 : 0) - _slotRecent[slot]), 0.05, 0.95);
+            }
 
             // Not the echo of the hit just before (a clap is three or four bursts in quick succession).
             if (rel > 0.3 && sinceLast >= _refractory)
@@ -345,10 +368,23 @@ public sealed class HitDetector
         {
             var c = fft[a + i];
             double m = Math.Sqrt(c.X * c.X + c.Y * c.Y);
-            if (!first) rise += Math.Max(0, m - _prevMag[i]);
+            if (!first && !_percussive) rise += Math.Max(0, m - _prevMag[i]);
             total += m;
             _prevMag[i] = m;
             _mag[i] = m;
+        }
+        if (_percussive)
+        {
+            if (_perc.Length != n) { _perc = new double[n]; _prevPerc = new double[n]; first = true; }
+            for (int i = 0; i < n; i++)
+            {
+                int lo = Math.Max(0, i - MedianHalf), hi = Math.Min(n - 1, i + MedianHalf), k = hi - lo + 1;
+                Array.Copy(_mag, lo, _window, 0, k);
+                Array.Sort(_window, 0, k);
+                _perc[i] = _window[k / 2];
+                if (!first) rise += Math.Max(0, _perc[i] - _prevPerc[i]);
+            }
+            (_perc, _prevPerc) = (_prevPerc, _perc);
         }
         _prevFlatness = _flatness;
         _flatness = Flatness(_mag, total / n);

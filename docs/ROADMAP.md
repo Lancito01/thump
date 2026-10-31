@@ -30,7 +30,11 @@ of the mix, how it rings out). A tiny classifier trained offline could replace t
 
 - Re-check "IRONIC" by ero808, where the BPM used to jump between readings (146 → 125), against the new tempo tracker
   with `RealMusicBench`.
-- Bar/downbeat tracking, so claps on 2 and 4 can be told from kicks on 1 and 3 by position as well as sound.
+- A causal (no-lookahead) drum model, trained by distillation: run the current detectors offline with full hindsight
+  as the teacher, train a small model that only sees the past to match it. Same latency as today, no hand-tuned cues.
+- "Speaker delay" setting: Bluetooth speakers play 150–250 ms after Windows hands over the audio, so the lights could
+  be held back to land exactly on what you hear, with no prediction involved.
+- Remember each song's hit timeline and replay it in sync with the player's position on later plays.
 - Long-tailed kicks (hardstyle, 808): judge ring-out over a longer window when the kick band stays clean.
 - Remove the startup Run-key entry on uninstall, so it doesn't linger if "Start with Windows" was on.
 - Code-sign the MSI to stop SmartScreen warnings.

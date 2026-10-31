@@ -16,8 +16,13 @@ feel: the kick and the sub. Thump is built the other way round.
   plays, what *this* track's kick and clap or snare sound like (a spectral fingerprint, plus one of the sounds that
   turned out not to be them, such as bass notes and hi-hats) and how hard they hit. Every hit gets a **confidence**,
   and the lights only flash when it's sure the sound was the drum:
-  - **Sound first, wherever it lands.** The rhythm only nudges borderline sounds, so fills, rolls and the extra kick
-    before a drop still flash.
+  - **Sound, then pattern.** Each model also learns where its drum falls over every two beats (a house clap: every
+    other beat). Once the tempo is locked, a sound off that pattern has to be unmistakably the drum, so a melody note
+    or a hat between the claps stays dark. A roll or a breakdown that moves the drum onto every beat takes over after
+    a hit or two. The pattern only ever filters real sounds: it never flashes on a beat where nothing hit, so a fake
+    drop stays dark.
+  - **Percussive part only, for claps.** The clap band is median-filtered across frequency before onsets are measured,
+    which keeps noise (claps, snares) and flattens a synth or vocal note's harmonics.
   - **No drum, no flash.** A kick thumps at 45–140 Hz, punches out of the mix and is gone within ~130 ms; a clap rings
     in the mids for 100–200 ms. Each hit is checked against that a moment later (without delaying the flash), and
     those checks decide what the model learns from. An intro full of bass notes and swells doesn't get mistaken for
