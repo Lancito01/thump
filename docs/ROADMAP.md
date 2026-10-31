@@ -37,6 +37,9 @@ instrument it follows. Each light picks a source:
 - **Not in scope (yet): synths, vocals.** They overlap in frequency and sustain, so splitting them live is
   real-time source separation, much less reliable than drums. If anything, a continuous "melody energy" source like
   Bass, not hits.
+- **Training stays private.** The training code, the music and the labels live in a local repo that isn't
+  published. Only the weights ship, inside Thump. The teacher (ADTOF) is CC BY-NC-SA, so before a release with the
+  model, settle whether weights distilled from its labels can ship in a free, MIT-licensed app, or switch teachers.
 - **Before claiming it's the first:** check for existing live per-instrument light sync (lighting consoles, DJ
   lighting add-ons, smart-light apps) so the README and any store listing say only what's true.
 
