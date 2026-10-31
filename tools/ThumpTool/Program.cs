@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Globalization;
-using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 using Thump.Audio;
 using ThumpTool;
 
@@ -16,7 +14,7 @@ return 1;
 
 static int Analyze(string musicDir, string outDir)
 {
-    string[] exts = [".m4a", ".mp3", ".wav", ".flac", ".aac"];
+    string[] exts = [".m4a", ".mp3", ".wav", ".flac", ".aac", ".opus"];
     var files = Directory.EnumerateFiles(musicDir, "*", SearchOption.AllDirectories)
         .Where(f => exts.Contains(Path.GetExtension(f).ToLowerInvariant())).ToList();
     int done = 0, failed = 0;
@@ -33,14 +31,25 @@ static int Analyze(string musicDir, string outDir)
     return 0;
 }
 
-// Resampled to 48 kHz, what Windows usually hands Thump, so every hop is the same length as live.
+// Decoded by ffmpeg, like the teacher: Windows' AAC decoder keeps the encoder's ~48 ms of priming silence, which
+// would put every feature that much later than its label. Mono at 48 kHz, what Windows usually hands Thump, so every
+// hop is the same length as live.
 static void AnalyzeTrack(string file, string stem)
 {
     const int Rate = 48000;
     Directory.CreateDirectory(Path.GetDirectoryName(stem)!);
-    using var reader = new AudioFileReader(file);
-    ISampleProvider src = reader.WaveFormat.Channels == 1 ? reader : new StereoToMonoSampleProvider(reader);
-    if (src.WaveFormat.SampleRate != Rate) src = new WdlResamplingSampleProvider(src, Rate);
+    var psi = new System.Diagnostics.ProcessStartInfo("ffmpeg")
+    {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+    };
+    foreach (var arg in new[] { "-v", "error", "-i", file, "-ac", "1", "-ar", Rate.ToString(), "-f", "f32le", "-" })
+        psi.ArgumentList.Add(arg);
+    using var ffmpeg = System.Diagnostics.Process.Start(psi)!;
+    ffmpeg.ErrorDataReceived += (_, _) => { };
+    ffmpeg.BeginErrorReadLine();
+    var pcm = ffmpeg.StandardOutput.BaseStream;
 
     var hits = new List<Hit>();
     int frames = 0;
@@ -60,10 +69,19 @@ static void AnalyzeTrack(string file, string stem)
             if (kick is { } k) hits.Add(new Hit(t, "kick", k));
             if (clap is { } c) hits.Add(new Hit(t, "snare", c));
         };
-        var buf = new float[4800];
-        int read;
-        while ((read = src.Read(buf, 0, buf.Length)) > 0) a.Feed(buf.AsSpan(0, read), Rate);
+        var bytes = new byte[4 * 4800];
+        int have = 0, read;
+        while ((read = pcm.Read(bytes, have, bytes.Length - have)) > 0)
+        {
+            have += read;
+            int whole = have / 4 * 4;
+            a.Feed(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(bytes.AsSpan(0, whole)), Rate);
+            Array.Copy(bytes, whole, bytes, 0, have - whole);
+            have -= whole;
+        }
     }
+    ffmpeg.WaitForExit();
+    if (ffmpeg.ExitCode != 0 || frames == 0) throw new InvalidOperationException($"ffmpeg failed ({ffmpeg.ExitCode})");
     thf.Seek(16, SeekOrigin.Begin);
     thf.Write(frames);
     thf.Dispose();
