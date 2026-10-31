@@ -30,6 +30,14 @@ public partial class MainWindow : Window
     static readonly Color TrackColor = Color.FromRgb(0x23, 0x23, 0x31);
     int _tick;
     bool _skipSave;
+    bool _quitting;
+    readonly DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(6) };
+    UpdateInfo? _pendingUpdate;
+    string? _pendingMsi;
+
+    /// <summary>Set by <see cref="App"/>; null when running headless (screenshots).</summary>
+    public TrayIcon? Tray { get; set; }
+    public bool IsStreaming => _engine.IsStreaming;
 
     public MainWindow()
     {
@@ -37,6 +45,12 @@ public partial class MainWindow : Window
         DataContext = _settings;
         _engine = new SyncEngine(_settings);
         _engine.Status += msg => Dispatcher.BeginInvoke(() => { StatusText.Text = msg; UpdateSyncButton(); });
+        _updateTimer.Tick += async (_, _) => await CheckForUpdatesAsync(manual: false);
+        IsVisibleChanged += (_, _) =>
+        {
+            // Nothing to draw while hidden in the tray; the engine keeps running on its own thread.
+            if (IsVisible) _uiTimer.Start(); else _uiTimer.Stop();
+        };
         _engine.AlbumArt.Changed += np => Dispatcher.BeginInvoke(() => ShowNowPlaying(np));
 
         SourceBox.ItemsSource = Enum.GetValues<ColorSource>();
@@ -66,28 +80,83 @@ public partial class MainWindow : Window
         UpdateColorPanels();
         _uiTimer.Tick += (_, _) => RenderUi();
 
-        Loaded += async (_, _) =>
-        {
-            _engine.Start();
-            _uiTimer.Start();
-            StatusText.Text = $"Preview mode — listening to {_engine.AudioDeviceName}.";
-            if (_settings.Username != null) await RefreshAreasAsync(quiet: true);
-            await MaybeTakeScreenshotAsync();
-        };
+        VersionText.Text = $"Thump {Updater.Current.ToString(3)}" + (Updater.IsInstalled ? "" : " (portable)");
+        Loaded += async (_, _) => await MaybeTakeScreenshotAsync();
         Closing += OnClosing;
+    }
+
+    /// <summary>Starts audio, the engine and the bridge connection. Runs whether or not the window is shown.</summary>
+    public async Task InitializeAsync()
+    {
+        _engine.Start();
+        StatusText.Text = $"Preview mode — listening to {_engine.AudioDeviceName}.";
+        try { Startup.Apply(_settings.StartWithWindows); } catch { /* registry locked down: not fatal */ }
+        if (_settings.Username != null) await RefreshAreasAsync(quiet: true);
+        if (_settings.AutoStartSync && AreaBox.SelectedItem is EntertainmentArea && !_engine.IsStreaming)
+            await ToggleSyncAsync();
+        if (_settings.CheckForUpdates)
+        {
+            _updateTimer.Start();
+            await Task.Delay(TimeSpan.FromSeconds(8));
+            await CheckForUpdatesAsync(manual: false);
+        }
+    }
+
+    public void ShowFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    /// <summary>Really exits (tray menu → Quit), as opposed to closing the window.</summary>
+    public void Quit()
+    {
+        _quitting = true;
+        Close();
     }
 
     void OnClosing(object? sender, CancelEventArgs e)
     {
+        if (!_quitting && _settings.RunInBackground && Tray != null)
+        {
+            e.Cancel = true;
+            Hide();
+            try { _settings.Save(); } catch { /* keep running regardless */ }
+            if (!_settings.TrayHintShown)
+            {
+                _settings.TrayHintShown = true;
+                Tray.Notify("Thump is still running", _engine.IsStreaming
+                    ? "Your lights keep syncing. Right-click the tray icon to stop or quit."
+                    : "It's in the notification area. Right-click the icon to quit.");
+            }
+            return;
+        }
+
         _uiTimer.Stop();
+        _updateTimer.Stop();
         _engine.Dispose();
         if (!_skipSave)
             try { _settings.Save(); } catch { /* nothing useful to do on exit */ }
+        Application.Current.Shutdown();
     }
 
     void OnSettingChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AppSettings.ColorSource)) UpdateColorPanels();
+        switch (e.PropertyName)
+        {
+            case nameof(AppSettings.ColorSource):
+                UpdateColorPanels();
+                break;
+            case nameof(AppSettings.StartWithWindows):
+                try { Startup.Apply(_settings.StartWithWindows); }
+                catch (Exception ex) { UpdateStatus.Text = $"Couldn't change startup: {ex.Message}"; }
+                break;
+            case nameof(AppSettings.CheckForUpdates):
+                if (_settings.CheckForUpdates) { _updateTimer.Start(); _ = CheckForUpdatesAsync(manual: false); }
+                else _updateTimer.Stop();
+                break;
+        }
     }
 
     void UpdateColorPanels()
@@ -305,10 +374,19 @@ public partial class MainWindow : Window
 
     void ResetAudio_Click(object sender, RoutedEventArgs e) => _settings.ResetAudio();
 
+    void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
+    }
+
     // ---------- Sync ----------
 
-    async void SyncButton_Click(object sender, RoutedEventArgs e)
+    async void SyncButton_Click(object sender, RoutedEventArgs e) => await ToggleSyncAsync();
+
+    public async Task ToggleSyncAsync()
     {
+        if (!SyncButton.IsEnabled) return; // already connecting
         SyncButton.IsEnabled = false;
         try
         {
@@ -344,6 +422,70 @@ public partial class MainWindow : Window
     {
         SyncButton.Content = _engine.IsStreaming ? "Stop light sync" : "Start light sync";
         SyncButton.Style = (Style)FindResource(_engine.IsStreaming ? "StopButton" : "PrimaryButton");
+        Tray?.SetStatus(_engine.IsStreaming ? "Thump — syncing your lights" : "Thump");
+    }
+
+    // ---------- Updates ----------
+
+    async void CheckUpdates_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(manual: true);
+
+    async Task CheckForUpdatesAsync(bool manual)
+    {
+        UpdateStatus.Text = "Checking for updates…";
+        try
+        {
+            var update = await Updater.CheckAsync();
+            if (update == null)
+            {
+                UpdateStatus.Text = $"You're on the latest version ({Updater.Current.ToString(3)}).";
+                return;
+            }
+            _pendingUpdate = update;
+            if (!Updater.IsInstalled || update.MsiUrl == null)
+            {
+                // Portable copy: we can't update in place, just point at the release.
+                ShowUpdateBanner($"Thump {update.Tag} is available", "Download");
+                UpdateStatus.Text = $"{update.Tag} is available on GitHub.";
+                return;
+            }
+
+            UpdateStatus.Text = $"Downloading {update.Tag}…";
+            _pendingMsi = await Updater.DownloadAsync(update);
+            UpdateStatus.Text = $"{update.Tag} is ready to install.";
+
+            if (_settings.AutoInstallUpdates && !_engine.IsStreaming)
+            {
+                InstallPendingUpdate();
+                return;
+            }
+            ShowUpdateBanner($"Thump {update.Tag} is ready", "Install & restart");
+            if (!IsVisible)
+                Tray?.Notify($"Thump {update.Tag} is ready", "Click to install and restart Thump.", InstallPendingUpdate);
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus.Text = manual ? $"Update check failed: {ex.Message}" : "";
+        }
+    }
+
+    void ShowUpdateBanner(string text, string action)
+    {
+        UpdateBannerText.Text = text;
+        UpdateBannerButton.Content = action;
+        UpdateBanner.Visibility = Visibility.Visible;
+    }
+
+    void UpdateBanner_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingMsi != null) InstallPendingUpdate();
+        else if (_pendingUpdate != null) Updater.OpenReleasePage(_pendingUpdate);
+    }
+
+    void InstallPendingUpdate()
+    {
+        if (_pendingMsi == null) return;
+        Updater.InstallAfterExit(_pendingMsi, startHidden: !IsVisible);
+        Quit();
     }
 
     /// <summary>
@@ -372,7 +514,7 @@ public partial class MainWindow : Window
         enc.Frames.Add(BitmapFrame.Create(bmp));
         using (var fs = File.Create(args[i + 1])) enc.Save(fs);
         _skipSave = true;
-        Close();
+        Quit();
     }
 
     // Windows 10 draws a white title bar unless the window opts into dark mode.

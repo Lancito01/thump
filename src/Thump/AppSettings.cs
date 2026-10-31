@@ -55,6 +55,18 @@ public sealed class AppSettings : Observable
     public int SettingsVersion { get; set; }
     const int CurrentVersion = 2;
 
+    // App behaviour
+    bool _runInBackground = true, _startWithWindows, _autoStartSync, _checkForUpdates, _autoInstallUpdates, _trayHintShown;
+    /// <summary>Closing the window hides it to the tray; sync keeps running until Quit.</summary>
+    public bool RunInBackground { get => _runInBackground; set => Set(ref _runInBackground, value); }
+    public bool StartWithWindows { get => _startWithWindows; set => Set(ref _startWithWindows, value); }
+    public bool AutoStartSync { get => _autoStartSync; set => Set(ref _autoStartSync, value); }
+    /// <summary>Opt-in: look for new releases on GitHub.</summary>
+    public bool CheckForUpdates { get => _checkForUpdates; set => Set(ref _checkForUpdates, value); }
+    /// <summary>Opt-in: install downloaded updates without asking (only while not syncing).</summary>
+    public bool AutoInstallUpdates { get => _autoInstallUpdates; set => Set(ref _autoInstallUpdates, value); }
+    public bool TrayHintShown { get => _trayHintShown; set => Set(ref _trayHintShown, value); }
+
     // Bridge
     string? _bridgeIp, _username, _clientKey, _applicationId, _areaId;
     public string? BridgeIp { get => _bridgeIp; set => Set(ref _bridgeIp, value); }

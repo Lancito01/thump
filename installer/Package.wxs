@@ -1,0 +1,47 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <!-- Per-user install into %LocalAppData%\Programs\Thump: no admin prompt, and updates can replace it in place. -->
+  <Package Name="Thump" Manufacturer="Lancito01" Version="$(var.Version)"
+           UpgradeCode="AFFCA016-0D91-4EC8-A332-1B75737EAA49" Scope="perUser" Compressed="yes">
+    <SummaryInformation Description="Thump – bass-first music sync for Philips Hue" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of Thump is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="ThumpIcon" SourceFile="..\src\Thump\Assets\thump.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ThumpIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Lancito01/thump" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="UserProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Thump" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Thump">
+      <Component Id="App" Directory="INSTALLFOLDER" Guid="5B0E3B8C-1C1F-4E44-9A0B-6B4E3F7C2D11">
+        <File Id="ThumpExe" Source="$(var.PublishDir)Thump.exe" KeyPath="no" Checksum="yes" />
+        <File Id="License" Source="..\LICENSE" Name="LICENSE.txt" KeyPath="no" />
+        <!-- Per-user components need a registry key path -->
+        <RegistryValue Root="HKCU" Key="Software\Thump" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+      </Component>
+      <Component Id="StartMenu" Directory="ProgramMenuFolder" Guid="C7B5E1F2-6F0A-4D37-8B1E-2D7A9E4C3B22">
+        <Shortcut Id="ThumpShortcut" Name="Thump" Description="Bass-first music sync for Philips Hue"
+                  Target="[INSTALLFOLDER]Thump.exe" WorkingDirectory="INSTALLFOLDER" Icon="ThumpIcon" />
+        <RegistryValue Root="HKCU" Key="Software\Thump" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </Feature>
+
+    <!-- Simple UI: licence → install → "Launch Thump" -->
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Thump" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#ThumpExe]" />
+    <CustomAction Id="LaunchThump" DllEntry="WixShellExec" Impersonate="yes" BinaryRef="Wix4UtilCA_X64" />
+    <UI>
+      <ui:WixUI Id="WixUI_Minimal" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchThump"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

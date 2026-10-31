@@ -36,10 +36,23 @@ feel: the kick and the sub. Thump is built the other way round.
 
 ## Download
 
-Grab `Thump-win-x64.zip` from the [latest release](../../releases/latest), unzip, and run `Thump.exe`. It's a
-self-contained build, so .NET doesn't need to be installed.
+Grab **`Thump-x.y.z.msi`** from the [latest release](../../releases/latest) and run it. It installs just for you
+(no admin prompt) into `%LocalAppData%\Programs\Thump`, adds a Start menu shortcut, and can be removed from
+*Settings → Apps*. Prefer no installer? `Thump-win-x64-portable.zip` has the same app as a single exe.
 
-Windows SmartScreen may warn because the exe isn't code-signed. Choose *More info → Run anyway*, or build it yourself.
+Windows SmartScreen may warn because the installer isn't code-signed yet. Choose *More info → Run anyway*, or build
+it yourself.
+
+### Runs in the background
+
+Closing the window doesn't stop Thump: it keeps your lights syncing from the notification area (system tray).
+Right-click the tray icon to start or stop syncing, or to quit. On the **App** tab you can turn on:
+
+- **Start with Windows**: starts hidden in the tray when you sign in.
+- **Automatically connect**: connects to your entertainment area and starts syncing as soon as Thump starts.
+- **Updates**: off unless you enable them. Thump checks this repository's GitHub releases every few hours,
+  downloads the new installer, verifies its SHA-256 checksum against the one GitHub publishes, and either asks you or
+  (if you opt in) installs it automatically when the lights aren't syncing.
 
 ## Setup
 
@@ -85,11 +98,14 @@ To see what the analyzer makes of a real track, record it to a WAV and run the b
 THUMP_WAV=path/to/track.wav dotnet test --filter RealMusicBench --logger "console;verbosity=detailed"
 ```
 
-Release build (single self-contained exe):
+Release build (single self-contained exe, then the per-user MSI; needs nothing beyond the .NET SDK, WiX comes from NuGet):
 
 ```bash
 dotnet publish src/Thump -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+dotnet build installer -c Release -p:Version=0.2.0
 ```
+
+Pushing a `v*` tag does all of this on GitHub Actions and publishes the release.
 
 ## How it works
 
@@ -110,6 +126,9 @@ Screen (GDI, 64×36) ─▶ per-light sampling by entertainment position ──�
 | `Hue/HueBridgeClient.cs` | Discovery, pairing, entertainment areas (CLIP v2) |
 | `Hue/EntertainmentStreamer.cs` | HueStream v2 over DTLS 1.2 PSK (BouncyCastle) |
 | `SyncEngine.cs` | The 50 Hz loop: features + colours → per-light output |
+| `TrayIcon.cs`, `Startup.cs` | Tray icon, start with Windows |
+| `Updater.cs` | Opt-in updates from GitHub Releases (checksum-verified MSI) |
+| `installer/` | WiX per-user MSI |
 
 Settings, including the bridge credentials, live in `%APPDATA%\Thump\settings.json`.
 

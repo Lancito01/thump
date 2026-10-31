@@ -1,0 +1,17 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <!-- Per-user MSI for Thump. Publish the single-file app to ../publish first, then build this with -p:Version=x.y.z
+       (the release workflow does both). -->
+  <PropertyGroup>
+    <OutputName>Thump-$(Version)</OutputName>
+    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\publish\</PublishDir>
+    <DefineConstants>Version=$(Version);PublishDir=$(PublishDir)</DefineConstants>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <!-- ICE validation needs admin rights on some machines; the CI runner can still run it -->
+    <SuppressValidation Condition="'$(CI)' != 'true'">true</SuppressValidation>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.1.0 to build and publish a release.
+# Push a tag like v0.2.0 to build and publish a release (installer + portable zip).
 on:
   push:
     tags: ['v*']
@@ -24,8 +24,17 @@ jobs:
           dotnet publish src/Thump -c Release -r win-x64 --self-contained `
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
             -p:Version=$version -o publish
-          Compress-Archive -Path publish/Thump.exe, LICENSE, README.md -DestinationPath Thump-win-x64.zip
+          Copy-Item LICENSE, README.md publish/
+          Compress-Archive -Path publish/Thump.exe, publish/LICENSE, publish/README.md -DestinationPath Thump-win-x64-portable.zip
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          dotnet build installer -c Release -p:Version=$version
+          Copy-Item installer/bin/Release/Thump-$version.msi .
       - uses: softprops/action-gh-release@v2
         with:
-          files: Thump-win-x64.zip
+          files: |
+            Thump-*.msi
+            Thump-win-x64-portable.zip
           generate_release_notes: true

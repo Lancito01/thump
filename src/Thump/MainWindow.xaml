@@ -25,6 +25,13 @@
 
                 <!-- Transport -->
                 <StackPanel DockPanel.Dock="Bottom">
+                    <Border x:Name="UpdateBanner" Visibility="Collapsed" CornerRadius="10" Padding="12,10" Margin="0,0,0,12"
+                            Background="{StaticResource CardBg}" BorderBrush="{StaticResource BrandGradient}" BorderThickness="1">
+                        <DockPanel>
+                            <Button x:Name="UpdateBannerButton" DockPanel.Dock="Right" Content="Install" Click="UpdateBanner_Click"/>
+                            <TextBlock x:Name="UpdateBannerText" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,8,0"/>
+                        </DockPanel>
+                    </Border>
                     <TextBlock x:Name="StatusText" Style="{StaticResource Hint}" Margin="2,0,0,10" Text="Preview mode — not connected to a bridge."/>
                     <Button x:Name="SyncButton" Content="Start light sync" Style="{StaticResource PrimaryButton}" Click="SyncButton_Click"/>
                 </StackPanel>
@@ -261,6 +268,43 @@
                                     <local:LabeledSlider Label="Music → brightness" Value="{Binding ScreenAudioMix}" Minimum="0" Maximum="1" Format="0%" Tip="0% = pure ambilight. 100% = screen sets the color, music sets the brightness."/>
                                     <local:LabeledSlider Label="Screen smoothing" Value="{Binding ScreenSmoothingMs}" Minimum="0" Maximum="1000" Format="0 ms"/>
                                 </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="App">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,12,8,12" MaxWidth="760" HorizontalAlignment="Left">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Running in the background" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Thump lives in the notification area (system tray). Right-click its icon to start or stop syncing, or to quit."/>
+                                <CheckBox Content="Keep syncing in the tray when I close the window" IsChecked="{Binding RunInBackground}" Margin="0,4"/>
+                                <CheckBox Content="Start Thump with Windows (hidden in the tray)" IsChecked="{Binding StartWithWindows}" Margin="0,4"/>
+                                <CheckBox Content="Automatically connect to my lights and start syncing when Thump starts" IsChecked="{Binding AutoStartSync}" Margin="0,4"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Updates" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="Off unless you turn it on. Thump checks the GitHub releases of Lancito01/thump every few hours, downloads the new installer and verifies its checksum."/>
+                                <CheckBox Content="Check for updates automatically" IsChecked="{Binding CheckForUpdates}" Margin="0,4"/>
+                                <CheckBox Content="Install updates automatically (only while lights aren't syncing)" IsChecked="{Binding AutoInstallUpdates}"
+                                          IsEnabled="{Binding CheckForUpdates}" Margin="24,4,0,4"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Check now" Click="CheckUpdates_Click"/>
+                                    <TextBlock x:Name="UpdateStatus" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock x:Name="VersionText" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}">
+                                    Open source (MIT). Source, issues and releases:
+                                    <Hyperlink NavigateUri="https://github.com/Lancito01/thump" RequestNavigate="Link_RequestNavigate">github.com/Lancito01/thump</Hyperlink>
+                                </TextBlock>
                             </StackPanel>
                         </Border>
                     </StackPanel>
