@@ -10,25 +10,30 @@ Hue Sync's music mode is tuned for "average" music: it blends the whole spectrum
 fine for pop, but on techno and house the lights end up following hats and synths instead of the thing you actually
 feel: the kick and the sub. Thump is built the other way round.
 
+> [!NOTE]
+> **Work in progress.** Kick detection is good on most tracks, but clap/snare detection is not reliable yet: expect
+> missed claps, and the odd flash on a hat or a synth. A small, no-lookahead drum model to replace the hand-tuned
+> detectors is the next big piece of work (see the [roadmap](docs/ROADMAP.md)).
+
 - **Bass-first audio engine.** The spectrum is split into six bands (sub, bass, low-mid, mid, high, air). Each band
   levels itself automatically, and you decide how much each one drives the lights. The defaults lean hard on the low end.
 - **Kick and clap/snare detection that learns each track by ear.** Two small per-song models learn, while the track
   plays, what *this* track's kick and clap or snare sound like (a spectral fingerprint, plus one of the sounds that
   turned out not to be them, such as bass notes and hi-hats) and how hard they hit. Every hit gets a **confidence**,
   and the lights only flash when it's sure the sound was the drum:
-  - **Sound, then pattern.** Each model also learns where its drum falls over every two beats (a house clap: every
-    other beat). Once the tempo is locked, a sound off that pattern has to be unmistakably the drum, so a melody note
-    or a hat between the claps stays dark. A roll or a breakdown that moves the drum onto every beat takes over after
-    a hit or two. The pattern only ever filters real sounds: it never flashes on a beat where nothing hit, so a fake
-    drop stays dark.
+  - **Claps only on the beat.** Once the tempo is locked, a clap or snare can only flash on a beat, so a hat or a
+    melody note between the claps stays dark (a roll pulses on the beat instead of fluttering). The beat only ever
+    filters real sounds: it never flashes where nothing hit, so a fake drop stays dark. Before the tempo locks, and
+    while a crossfade into the next song unlocks it, claps are judged by sound alone.
   - **Percussive part only, for claps.** The clap band is median-filtered across frequency before onsets are measured,
     which keeps noise (claps, snares) and flattens a synth or vocal note's harmonics.
   - **No drum, no flash.** A kick thumps at 45–140 Hz, punches out of the mix and is gone within ~130 ms; a clap rings
     in the mids for 100–200 ms. Each hit is checked against that a moment later (without delaying the flash), and
     those checks decide what the model learns from. An intro full of bass notes and swells doesn't get mistaken for
     the kick that only comes in at the drop.
-  - **The tempo is followed from every onset** (hats, synths, everything), with its own confidence: on-time hits raise
-    it, late or early ones nudge the tempo, so DJ pitch-riding, tempo ramps and hard tempo cuts are tracked.
+  - **The tempo is followed from every onset** (hats, synths, everything), within 100–180 BPM, so DJ pitch-riding,
+    tempo ramps and hard tempo cuts are tracked. Its confidence (shown in the app) comes from the kicks and claps
+    alone, and the kicks decide where the beat is.
 
   It starts over on every track change (or, if you opt in, from what it remembered about the song last time) and
   survives breakdowns. No training data, no model files. It's a few hundred lines of C#.

@@ -385,6 +385,42 @@ public class DrumDetectionTests
     }
 
     [Fact]
+    public void Claps_after_an_off_beat_intro_still_land_on_the_beat()
+    {
+        // 15 s of off-beat hats and bass alone set the grid half a beat out; the drop's kicks have to pull it back,
+        // or the on-beat gate would keep every clap dark.
+        var r = Run(Render(new Spec
+        {
+            Seconds = 50, ClapAmp = 0.5, KicksOn = t => t >= 15, ClapOnStep = _ => false,
+            ExtraClap = (bar, step) => bar >= 8 && step is 4 or 12,
+        }), scoreFrom: 28);
+        Assert.True(r.Final.BeatLocked, "never locked");
+        AssertGood(r.Clap, 0.9, 0.05, "clap");
+    }
+
+    [Fact]
+    public void Follows_a_12_second_crossfade_into_a_faster_song()
+    {
+        // Spotify-style crossfade: 128 BPM fading out over 12 s while 140 BPM, out of phase with it, fades in.
+        var a = Render(new Spec { Seconds = 40, ClapAmp = 0.5 });
+        var b = Render(new Spec { Seconds = 40, ClapAmp = 0.5, Bpm = _ => 140, Seed = 2 });
+        const double start = 28, fade = 12;
+        var mix = new float[(int)((start + 40) * Sr)];
+        for (int i = 0; i < a.Audio.Length; i++)
+            mix[i] += a.Audio[i] * (float)Math.Clamp(1 - ((double)i / Sr - start) / fade, 0, 1);
+        int off = (int)(start * Sr);
+        for (int i = 0; i < b.Audio.Length; i++)
+            mix[off + i] += b.Audio[i] * (float)Math.Clamp((double)i / Sr / fade, 0, 1);
+        var track = new Track(mix, [.. a.Kicks.Where(t => t < start + fade / 2), .. b.Kicks.Select(t => t + start).Where(t => t >= start + fade / 2)],
+            [.. a.Claps.Where(t => t < start + fade / 2), .. b.Claps.Select(t => t + start).Where(t => t >= start + fade / 2)]);
+        // Scored from 8 s after the old song is gone.
+        var r = Run(track, scoreFrom: start + fade + 8);
+        Assert.InRange(r.Final.Bpm, 138, 142);
+        AssertGood(r.Kick);
+        AssertGood(r.Clap, 0.9, 0.05, "clap");
+    }
+
+    [Fact]
     public void Finds_claps_among_melody_and_hats()
     {
         // A clap over a pluck isn't as noisy as one on its own, so a few are passed over: better dark than flashing

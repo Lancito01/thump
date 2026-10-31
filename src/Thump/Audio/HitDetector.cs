@@ -55,6 +55,8 @@ public sealed class HitDetector
     // Percussive separation: the onset is measured on the band median-filtered across frequency, which keeps noise
     // (claps, snares) and flattens a note's comb of harmonics down to the gaps between them.
     readonly bool _percussive;
+    // Once the tempo is locked, only hits on a beat count (claps and snares: a hat or a stab between them stays dark).
+    readonly bool _onBeatOnly;
     double[] _perc = [], _prevPerc = [];
     readonly double[] _window = new double[2 * MedianHalf + 1];
     const int MedianHalf = 8; // ±8 bins ≈ ±190 Hz
@@ -104,9 +106,10 @@ public sealed class HitDetector
 
     HitDetector(double lowHz, double highHz, double fromHz, double toHz, double refractory, RingOut ring,
         Func<SpectralFeatures, double, double>? soundPrior = null, double bootstrapPrior = 0, double priorWeight = 0.4,
-        double labelPrior = double.NegativeInfinity, bool percussive = false)
+        double labelPrior = double.NegativeInfinity, bool percussive = false, bool onBeatOnly = false)
     {
         _percussive = percussive;
+        _onBeatOnly = onBeatOnly;
         _priorWeight = priorWeight;
         _labelPrior = labelPrior;
         _bootstrapPrior = bootstrapPrior;
@@ -138,11 +141,12 @@ public sealed class HitDetector
     /// snare's wires are noise: at the hit the 1–6 kHz band is flat (spectral flatness ≳ 0.75), where a synth, piano or
     /// vocal note is a comb of harmonics and a hi-hat leaves the low end of the band empty (≲ 0.7). It also rattles mostly in the mids (hi-hats sit above 5 kHz) and rings
     /// out for 100–200 ms (a hat or a click is gone in 30). Those cues stay in force all along, not just at the start.
+    /// Once the tempo is locked, only hits on a beat flash: a roll pulses on the beat instead of fluttering.
     /// </summary>
     public static HitDetector Clap() =>
         new(1000, 6000, 190, 16000, 0.07, new RingOut(6, Lowest: false, DrumMin: 0.15, DrumMax: 0.85, OtherBelow: 0.1, OtherAbove: 1),
             (s, flatness) => Math.Clamp(2.5 * (s.MidShare() - 0.3), -1, 0.5) + Math.Clamp(10 * (flatness - 0.75), -2, 0.4),
-            bootstrapPrior: 0.7, priorWeight: 1, labelPrior: 0, percussive: true);
+            bootstrapPrior: 0.7, priorWeight: 1, labelPrior: 0, percussive: true, onBeatOnly: true);
 
     public void Reset()
     {
@@ -222,12 +226,13 @@ public sealed class HitDetector
             rel = cand / Math.Max(1e-6, _typical);
             sim = Cosine(_feature, _hitTemplate) - (_otherCount > 4 ? Cosine(_feature, _otherTemplate) : 0.5);
             // Where this drum usually is (or has been for the last few hits): for; where it rarely is, or between
-            // 16ths: against. Until the tempo is locked only a little, as far as it can be trusted; once locked, enough
-            // that a sound off the pattern has to be unmistakably the drum.
+            // 16ths: against. For kicks only a little, as far as the tempo can be trusted: the kick's sound is reliable
+            // and the grid can be a little out. For claps, once the tempo is locked, enough that a sound off the
+            // pattern has to be unmistakably the drum (and off the beat it's dark anyway).
             if (beat.TryGetSlot(time, out int slot, out bool onGrid))
             {
                 double p = Math.Max(_slotProb[slot], _slotRecent[slot]);
-                grid = beat.Locked
+                grid = _onBeatOnly && beat.Locked
                     ? onGrid ? Math.Clamp(Math.Log(0.2 + 1.6 * p), -1.2, 0.2) : -0.8
                     : beat.Confidence * (onGrid ? Math.Clamp(0.5 * Math.Log(0.4 + 1.2 * p), -0.15, 0.2) : -0.3);
             }
@@ -249,7 +254,8 @@ public sealed class HitDetector
             confidence = 1 / (1 + Math.Exp(-4 * margin));
             // Also dark while what sounds like the drum mostly hasn't been dying away like one (a section where the
             // "kick" is really a bass note): the model has to keep earning its trust.
-            accept = confidence >= 0.5 && sinceLast >= _refractory && _shapeRate >= ShapeGate;
+            bool offBeat = _onBeatOnly && beat.Locked && !(onGrid && slot % 4 == 0);
+            accept = confidence >= 0.5 && sinceLast >= _refractory && _shapeRate >= ShapeGate && !offBeat;
 
             if (onGrid && rel > 0.4)
             {
@@ -264,7 +270,8 @@ public sealed class HitDetector
             if (rel > 0.3 && sinceLast >= _refractory)
                 _pending.Enqueue(new Pending(hop - 1, (double[])_feature.Clone(), cand, rel, confidence, accept, prior));
 
-            if (!accept && rel >= 1 && sim > 0)
+            // (A drum kept dark for being off the beat is still the drum: no reason to start over.)
+            if (!accept && !offBeat && rel >= 1 && sim > 0)
             {
                 // Loud and drum-like, but the model keeps saying no: after a long run of these with no hits at all,
                 // the drum has probably changed (new track without media info, or a very different section).

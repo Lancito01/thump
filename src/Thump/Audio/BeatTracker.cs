@@ -5,8 +5,10 @@ namespace Thump.Audio;
 /// drums), weighting the kicks and claps the detectors are sure about more, and keeps score of how well its
 /// predictions hold up. Every onset is compared with where the grid says the nearest 16th note should be: on time
 /// raises <see cref="Confidence"/>, late or early nudges the tempo (so speed-ups and slow-downs are followed), and
-/// onsets that keep landing between 16ths lower it until the grid is worked out again. Because it doesn't wait for a
-/// drum, the tempo is known from the first bars of an intro.
+/// onsets that keep landing between 16ths make it work the grid out again. Because it doesn't wait for a drum, the
+/// tempo is known from the first bars of an intro. Only the drums the detectors are sure about are scored, though:
+/// the rest of the music (swing, echoes, vocals) lands near the grid but rarely on it, and would keep it from ever
+/// locking.
 /// <para>The grid spans two beats (8 16ths), so the detectors can learn that a clap falls on every other beat; which
 /// beat is "1" doesn't matter. It only ever informs them ("this sound was where this drum usually is"): it never
 /// makes a hit out of nothing, so a fake drop stays dark.</para>
@@ -16,9 +18,12 @@ public sealed class BeatTracker
     double _period;   // seconds per beat; 0 = no grid yet
     double _anchor;   // time (s) of a beat on the grid
     double _hint;     // a period worth trying first: the previous grid's, or one remembered for this song
-    double _lastHit = double.NegativeInfinity;
+    double _lastHit = double.NegativeInfinity, _lastDrum = double.NegativeInfinity;
     double _offGrid; // recent weight of onsets that landed between 16ths
     bool _locked;
+    // Which 16th of the beat the kicks land on, recently. They define where the beat is: a grid first set from an
+    // intro's off-beat hats or bass is moved onto them once they come in.
+    readonly double[] _kickPhase = new double[4];
     readonly Queue<(double T, double W)> _recent = new();
 
     // General onsets, peak-picked from the all-band flux
@@ -30,7 +35,7 @@ public sealed class BeatTracker
     public double Confidence { get; private set; }
     /// <summary>Confident enough to call it locked. Hysteresis keeps it from flickering.</summary>
     public bool Locked => _locked;
-    /// <summary>Current tempo in BPM (folded into 90–190), 0 if unknown.</summary>
+    /// <summary>Current tempo in BPM (folded into 90–180), 0 if unknown.</summary>
     public double Bpm => _period > 0 ? FoldBpm(60 / _period) : 0;
     public double Period => _period;
     /// <summary>Bumped whenever the grid is rebuilt; learned rhythm patterns are relative to it and start over.</summary>
@@ -45,7 +50,8 @@ public sealed class BeatTracker
         Confidence = 0;
         _locked = false;
         _offGrid = 0;
-        _lastHit = double.NegativeInfinity;
+        Array.Clear(_kickPhase);
+        _lastHit = _lastDrum = double.NegativeInfinity;
         _recent.Clear();
         GridVersion++;
     }
@@ -65,7 +71,7 @@ public sealed class BeatTracker
     /// <summary>Called every hop. Without hits to check against, the confidence slowly fades (breakdowns).</summary>
     public void Tick(double t, double dt)
     {
-        if (t - _lastHit > 2) Confidence *= Math.Exp(-dt / 20);
+        if (t - _lastDrum > 2) Confidence *= Math.Exp(-dt / 20);
         UpdateLock();
     }
 
@@ -88,13 +94,17 @@ public sealed class BeatTracker
         foreach (var (v, _) in _fluxPeaks) _scratch[n++] = v;
         Array.Sort(_scratch, 0, n);
         double strong = _scratch[(int)(0.9 * (n - 1))];
-        if (cand >= 0.5 * strong) Observe(t, 0.5 * Math.Min(1, cand / strong));
+        if (cand >= 0.5 * strong) Observe(t, 0.5 * Math.Min(1, cand / strong), drum: false);
     }
 
-    /// <summary>An onset. <paramref name="weight"/>: 1 for a confident kick, less for claps and general onsets.</summary>
-    public void Observe(double t, double weight)
+    /// <summary>
+    /// An onset. <paramref name="weight"/>: 1 for a confident kick, less for claps and general onsets.
+    /// <paramref name="drum"/>: a kick or clap, which also scores the grid.
+    /// </summary>
+    public void Observe(double t, double weight, bool drum = true)
     {
         _lastHit = t;
+        if (drum) _lastDrum = t;
         _recent.Enqueue((t, weight));
         while (_recent.Count > 32 || _recent.Count > 0 && t - _recent.Peek().T > 8) _recent.Dequeue();
 
@@ -110,19 +120,36 @@ public sealed class BeatTracker
                 double old = _period;
                 _period = Math.Clamp(_period + 0.3 * weight * err / Math.Max(1, n / 4), 0.25, 1.5);
                 _anchor += cycles * Slots / 4 * old + 0.5 * weight * err;
-                double quality = Math.Exp(-err * err / (2 * 0.018 * 0.018));
-                Confidence += 0.08 * weight * (quality - Confidence);
+                // Within ±30 ms is on the beat as far as the lights go; kicks also peak a hop or two after the general onsets
+                // that steer the grid.
+                double quality = Math.Exp(-err * err / (2 * 0.03 * 0.03));
+                if (drum) Confidence += 0.08 * weight * (quality - Confidence);
                 _offGrid *= 1 - 0.5 * weight;
+                if (drum && weight >= 1) VoteKickPhase((int)(((long)n % 4 + 4) % 4));
             }
             else if (n >= 1)
             {
-                Confidence += 0.08 * weight * (0 - Confidence);
+                // A drum off the grid is the strongest sign it's wrong (a mix into the next song): unlock quickly.
+                if (drum) Confidence += 0.2 * weight * (0 - Confidence);
                 _offGrid += weight;
             }
         }
 
         if (_period <= 0 || _offGrid >= 2) TryInduce(t);
         UpdateLock();
+    }
+
+    void VoteKickPhase(int phase)
+    {
+        for (int i = 0; i < 4; i++) _kickPhase[i] *= 0.9;
+        _kickPhase[phase] += 1;
+        int best = 0;
+        for (int i = 1; i < 4; i++) if (_kickPhase[i] > _kickPhase[best]) best = i;
+        // Clearly more kicks off the beat than on it (a syncopated kick pattern still has most of its kicks on it).
+        if (best == 0 || _kickPhase[best] < 4 || _kickPhase[best] < 3 * _kickPhase[0]) return;
+        _anchor += best * _period / 4;
+        Array.Clear(_kickPhase);
+        GridVersion++;
     }
 
     void UpdateLock()
@@ -173,6 +200,7 @@ public sealed class BeatTracker
         else
         {
             GridVersion++;
+            Array.Clear(_kickPhase);
             // The hits that built the grid already fit it: start halfway, and let the next few hits decide.
             Confidence = 0.45;
         }
@@ -185,14 +213,15 @@ public sealed class BeatTracker
     /// <summary>
     /// Finds the beat period that best explains the hits: every pair should be a whole number of 16ths apart, better
     /// a whole number of 8ths, best a whole number of beats (so a steady 174 BPM pulse isn't read as dotted 8ths at
-    /// 130). A mild prior toward ~125 BPM settles half/double-tempo ambiguity. Returns the period and the (weighted)
+    /// 130). Only 100–180 BPM is considered (for lights, a 90 BPM track is as good as 180), and a mild prior toward
+    /// ~125 BPM settles what's left of half/double-tempo ambiguity. Returns the period and the (weighted)
     /// share of consecutive intervals that sit on its 16th grid, give or take 20 ms: onsets of different instruments
     /// peak a hop or so apart.
     /// </summary>
     internal static (double Period, double Fit) InduceTempo((double T, double W)[] hits)
     {
         double bestScore = 0, best = 0;
-        for (double p = 0.33; p <= 0.75; p += 0.002) // 80–180 BPM
+        for (double p = 0.333; p <= 0.6; p += 0.002) // 100–180 BPM
         {
             double score = 0, sixteenth = p / 4;
             for (int i = 0; i < hits.Length; i++)
@@ -230,7 +259,7 @@ public sealed class BeatTracker
     static double FoldBpm(double bpm)
     {
         while (bpm < 90) bpm *= 2;
-        while (bpm > 190) bpm /= 2;
+        while (bpm > 180) bpm /= 2;
         return Math.Round(bpm);
     }
 }
