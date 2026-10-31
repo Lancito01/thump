@@ -42,7 +42,7 @@ public sealed class AudioAnalyzer : IDisposable
 
     const int FftSize = 2048;
     const int FftLog2 = 11;
-    const int Hop = 512;
+    public const int Hop = 512;
 
     readonly object _lock = new();
     readonly float[] _ring = new float[FftSize];
@@ -61,6 +61,7 @@ public sealed class AudioAnalyzer : IDisposable
     readonly HitDetector _kick = HitDetector.Kick();
     readonly HitDetector _clap = HitDetector.Clap();
     readonly BeatTracker _beat = new();
+    readonly ModelFeatures _model = new();
     double _kickEnv, _clapEnv;
     long _kickCount, _clapCount;
     long _samplesSeen;
@@ -75,6 +76,12 @@ public sealed class AudioAnalyzer : IDisposable
     public double AdaptSeconds { get; set; } = 6;
 
     public string DeviceName { get; private set; } = "";
+
+    /// <summary>
+    /// Offline analysis only (dataset export, scoring): called after every hop with the time the lights would react,
+    /// the <see cref="ModelFeatures"/> values for that hop, and the kick and clap confidences if either fired.
+    /// </summary>
+    public Action<double, float[], double?, double?>? HopAnalyzed { get; set; }
 
     public void Start(string? deviceId = null)
     {
@@ -205,20 +212,27 @@ public sealed class AudioAnalyzer : IDisposable
             _clap.Sensitivity = ClapSensitivity;
             _spectrum.Compute(_fft, FftSize, binHz, dt);
             double time = (double)(_samplesSeen - Hop) / _sampleRate; // the hop the detectors are deciding about
-            if (_kick.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate) is { } kick)
+            double? kick = _kick.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate);
+            if (kick != null)
             {
                 _kickEnv = 1;
                 _kickCount++;
-                if (kick >= 0.6) _beat.Observe(time, 1);
+                if (kick.Value >= 0.6) _beat.Observe(time, 1);
             }
-            if (_clap.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate) is { } clap)
+            double? clap = _clap.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate);
+            if (clap != null)
             {
                 _clapEnv = 1;
                 _clapCount++;
-                if (clap >= 0.65) _beat.Observe(time, 0.6);
+                if (clap.Value >= 0.65) _beat.Observe(time, 0.6);
             }
             _beat.Feed(_spectrum.Flux, time);
             _beat.Tick(time, dt);
+            if (HopAnalyzed != null)
+            {
+                _model.Compute(_fft, FftSize, binHz);
+                HopAnalyzed((double)_samplesSeen / _sampleRate, _model.Values, kick, clap);
+            }
         }
     }
 
