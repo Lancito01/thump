@@ -102,7 +102,7 @@ Release build (single self-contained exe, then the per-user MSI; needs nothing b
 
 ```bash
 dotnet publish src/Thump -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-dotnet build installer -c Release -p:Version=0.2.0
+dotnet build installer -c Release -p:Version=0.2.1
 ```
 
 Pushing a `v*` tag does all of this on GitHub Actions and publishes the release.

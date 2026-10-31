@@ -24,6 +24,8 @@
         <!-- Per-user components need a registry key path -->
         <RegistryValue Root="HKCU" Key="Software\Thump" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
         <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+        <!-- Only removed if empty, so other apps in %LocalAppData%\Programs are untouched -->
+        <RemoveFolder Id="RemoveUserPrograms" Directory="UserProgramsFolder" On="uninstall" />
       </Component>
       <Component Id="StartMenu" Directory="ProgramMenuFolder" Guid="C7B5E1F2-6F0A-4D37-8B1E-2D7A9E4C3B22">
         <Shortcut Id="ThumpShortcut" Name="Thump" Description="Bass-first music sync for Philips Hue"
