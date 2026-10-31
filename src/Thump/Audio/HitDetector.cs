@@ -31,7 +31,9 @@ public sealed class HitDetector
     readonly int _firstBand, _dims;
     // What this kind of drum sounds like before anything is learned, as log-odds evidence (0 = no opinion), and how
     // much of that a sound needs to become one of the first examples.
-    readonly Func<SpectralFeatures, double>? _soundPrior;
+    readonly Func<SpectralFeatures, double, double>? _soundPrior; // (spectrum, onset flatness) → evidence
+    readonly double _priorWeight;  // how much the generic prior still counts once the song's own model has formed
+    readonly double _labelPrior;   // a ring-out alone isn't enough to learn from a sound with less prior than this
     readonly double _bootstrapPrior;
     // How the drum dies away: checked a few hops after each onset to label what the model learns from.
     readonly RingOut _ring;
@@ -48,6 +50,19 @@ public sealed class HitDetector
     double[] _prevMag = [];
     double _bandPeak;
     double _prev1Strength, _prev2Strength;
+    // Spectral flatness of the band in the latest two hops (the onset is picked one hop after its peak).
+    double[] _mag = [];
+    double _flatness, _prevFlatness;
+
+    /// <summary>Geometric over arithmetic mean: near 1 for noise spread evenly, lower for a few strong peaks.</summary>
+    static double Flatness(double[] v, double mean)
+    {
+        if (mean <= 1e-12) return 0;
+        double floor = 0.01 * mean, logs = 0;
+        foreach (var x in v) logs += Math.Log(x + floor);
+        return Math.Exp(logs / v.Length) / (mean + floor);
+    }
+
     readonly double[] _energy = new double[16]; // the band's total magnitude over the last hops, for the ring-out check
     long _hop;
 
@@ -81,8 +96,11 @@ public sealed class HitDetector
     sealed record RingOut(int Hops, bool Lowest, double DrumMin, double DrumMax, double OtherBelow, double OtherAbove);
 
     HitDetector(double lowHz, double highHz, double fromHz, double toHz, double refractory, RingOut ring,
-        Func<SpectralFeatures, double>? soundPrior = null, double bootstrapPrior = 0)
+        Func<SpectralFeatures, double, double>? soundPrior = null, double bootstrapPrior = 0, double priorWeight = 0.4,
+        double labelPrior = double.NegativeInfinity)
     {
+        _priorWeight = priorWeight;
+        _labelPrior = labelPrior;
         _bootstrapPrior = bootstrapPrior;
         _lowHz = lowHz;
         _highHz = highHz;
@@ -104,15 +122,18 @@ public sealed class HitDetector
     /// </summary>
     public static HitDetector Kick() =>
         new(40, 130, 0, 2500, 0.09, new RingOut(12, Lowest: true, DrumMin: double.NegativeInfinity, DrumMax: 0.45,
-            OtherBelow: double.NegativeInfinity, OtherAbove: 0.75), s => s.KickShape(), bootstrapPrior: 0.3);
+            OtherBelow: double.NegativeInfinity, OtherAbove: 0.75), (s, _) => s.KickShape(), bootstrapPrior: 0.3);
 
     /// <summary>
-    /// Claps and snares: onsets in 1–6 kHz, fingerprinted from 190 Hz up (kick and bass don't matter). Expected to
-    /// rattle mostly in the mids and to ring out for a while, which is what tells them from hi-hats and clicks.
+    /// Claps and snares: onsets in 1–6 kHz, fingerprinted from 190 Hz up (kick and bass don't matter). A clap or a
+    /// snare's wires are noise: at the hit the 1–6 kHz band is flat (spectral flatness ≳ 0.75), where a synth, piano or
+    /// vocal note is a comb of harmonics and a hi-hat leaves the low end of the band empty (≲ 0.7). It also rattles mostly in the mids (hi-hats sit above 5 kHz) and rings
+    /// out for 100–200 ms (a hat or a click is gone in 30). Those cues stay in force all along, not just at the start.
     /// </summary>
     public static HitDetector Clap() =>
         new(1000, 6000, 190, 16000, 0.07, new RingOut(6, Lowest: false, DrumMin: 0.15, DrumMax: 0.85, OtherBelow: 0.1, OtherAbove: 1),
-            s => Math.Clamp(2.5 * (s.MidShare() - 0.3), -1, 0.5), bootstrapPrior: 0.25);
+            (s, flatness) => Math.Clamp(2.5 * (s.MidShare() - 0.3), -1, 0.5) + Math.Clamp(10 * (flatness - 0.75), -2, 0.4),
+            bootstrapPrior: 0.7, priorWeight: 1, labelPrior: 0);
 
     public void Reset()
     {
@@ -164,7 +185,7 @@ public sealed class HitDetector
 
         Fingerprint(spectrum.Previous);
         double sens = Math.Max(0.2, Sensitivity);
-        double prior = _soundPrior?.Invoke(spectrum) ?? 0;
+        double prior = _soundPrior?.Invoke(spectrum, _prevFlatness) ?? 0;
         double rel, sim = 0, grid = 0, confidence;
         bool accept;
 
@@ -205,9 +226,9 @@ public sealed class HitDetector
             // Evidence in log-odds: as loud as this track's drum, sounds like what it learned (the main thing), stands
             // out, and (a little) on the beat. The timing term can move the bar by only about ±30%, so it tips
             // doubtful sounds but never vetoes a clear one. The generic sound prior steps back now that the model
-            // knows this track's drum.
+            // knows this track's drum (except for claps, where it keeps ruling out sounds that plainly aren't noise).
             double margin = Math.Log(Math.Max(rel, 1e-3)) + 1.5 * Math.Log(Math.Max(1 + sim, 1e-3)) + standOut
-                            + grid + crowded + 0.4 * prior + Math.Log(sens / 0.8);
+                            + grid + crowded + _priorWeight * prior + Math.Log(sens / 0.8);
             confidence = 1 / (1 + Math.Exp(-4 * margin));
             // Also dark while what sounds like the drum mostly hasn't been dying away like one (a section where the
             // "kick" is really a bass note): the model has to keep earning its trust.
@@ -262,7 +283,7 @@ public sealed class HitDetector
             for (long h = p.Hop + 4; h < now; h++) tail = Math.Min(tail, Energy(h));
         double ring = (tail - before) / rise;
 
-        bool drum = ring >= _ring.DrumMin && ring <= _ring.DrumMax;
+        bool drum = ring >= _ring.DrumMin && ring <= _ring.DrumMax && p.Prior > _labelPrior;
         bool other = ring < _ring.OtherBelow || ring > _ring.OtherAbove;
         if (drum && _learned is > 0 and < 2 * Bootstrap && p.Strength > 2.5 * _typical)
         {
@@ -319,6 +340,7 @@ public sealed class HitDetector
         // quiet note out of silence as high as a loud kick). Normalised by the band's recent peak, so it doesn't
         // depend on how loud the track is mastered.
         double rise = 0, total = 0;
+        if (_mag.Length != n) _mag = new double[n];
         for (int i = 0; i < n; i++)
         {
             var c = fft[a + i];
@@ -326,7 +348,10 @@ public sealed class HitDetector
             if (!first) rise += Math.Max(0, m - _prevMag[i]);
             total += m;
             _prevMag[i] = m;
+            _mag[i] = m;
         }
+        _prevFlatness = _flatness;
+        _flatness = Flatness(_mag, total / n);
         _energy[(int)(_hop % _energy.Length)] = total;
         _bandPeak = Math.Max(total, _bandPeak * Math.Exp(-dt / 8));
         return _bandPeak > 1e-7 ? 100 * rise / _bandPeak : 0; // ≤ 1e-7 ≈ digital silence

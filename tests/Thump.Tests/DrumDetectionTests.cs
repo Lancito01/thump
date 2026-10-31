@@ -21,6 +21,10 @@ public class DrumDetectionTests
         public double Seconds = 40;
         public double KickAmp = 0.8, BassAmp = 0.6, HatAmp = 0.15, ClapAmp = 0, Gain = 1, KickJitter = 0;
         public bool Snare;
+        /// <summary>A synth lead: plucked saw notes on random 8ths, fundamentals 300–900 Hz.</summary>
+        public double MelodyAmp;
+        /// <summary>Hats as produced: steeply high-passed noise, closed on the off-beats and an open one every bar.</summary>
+        public bool RealHats;
         public Func<double, double> Bpm = _ => 128;
         public Func<int, bool> KickOnStep = step => step % 4 == 0; // step = 16th note within a 16-step bar
         public Func<int, int, bool> ExtraKick = (bar, step) => false;
@@ -49,7 +53,12 @@ public class DrumDetectionTests
             else if (inBar % 4 != 0)
                 AddBass(buf, t, bassNotes[(step / 4) % bassNotes.Length], s.BassAmp * s.Gain);
             if (inBar % 4 == 2)
-                AddNoise(buf, t, 0.03, s.HatAmp * s.Gain, rng);
+            {
+                if (!s.RealHats) AddNoise(buf, t, 0.03, s.HatAmp * s.Gain, rng);
+                else AddHat(buf, t, inBar == 14 ? 0.25 : 0.04, s.HatAmp * s.Gain, rng);
+            }
+            if (s.MelodyAmp > 0 && inBar % 2 == 0 && rng.NextDouble() < 0.7)
+                AddPluck(buf, t, 300 * Math.Pow(2, rng.Next(0, 19) / 12.0), s.MelodyAmp * s.Gain);
             if (s.ClapAmp > 0 && (s.ClapOnStep(inBar) || s.ExtraClap(step / 16, inBar)))
             {
                 if (s.Snare) AddSnare(buf, t, s.ClapAmp * s.Gain, rng);
@@ -98,6 +107,32 @@ public class DrumDetectionTests
             double hp = x - prev; // crude high-pass so hats don't leak into the kick band
             prev = x;
             buf[start + i] += (float)(amp * hp * Math.Exp(-i / (0.008 * Sr)));
+        }
+    }
+
+    /// <summary>A hi-hat: noise high-passed twice (most of it above 5 kHz), closed (short) or open (long).</summary>
+    static void AddHat(float[] buf, double t0, double len, double amp, Random rng)
+    {
+        int start = (int)(t0 * Sr);
+        double p1 = 0, p2 = 0;
+        for (int i = 0; i < (int)(len * 1.5 * Sr) && start + i < buf.Length; i++)
+        {
+            double x = rng.NextDouble() * 2 - 1, d1 = x - p1, d2 = d1 - p2;
+            p1 = x;
+            p2 = d1;
+            buf[start + i] += (float)(amp * d2 * 0.5 * Math.Exp(-i / (len / 3 * Sr)));
+        }
+    }
+
+    /// <summary>A synth pluck: a bright saw-like tone (12 harmonics) with a fast attack and a 150 ms decay.</summary>
+    static void AddPluck(float[] buf, double t0, double freq, double amp)
+    {
+        int start = (int)(t0 * Sr);
+        for (int i = 0; i < (int)(0.3 * Sr) && start + i < buf.Length; i++)
+        {
+            double t = (double)i / Sr, v = 0;
+            for (int h = 1; h <= 12 && h * freq < 10000; h++) v += Math.Sin(2 * Math.PI * freq * h * t) / h;
+            buf[start + i] += (float)(amp * Math.Min(1, t / 0.002) * Math.Exp(-t / 0.15) * v * 0.5);
         }
     }
 
@@ -337,6 +372,32 @@ public class DrumDetectionTests
         // few of them are missed; the rest of the roll must still flash.
         var r = Run(Render(new Spec { ClapAmp = 0.5, Seconds = 50, ExtraClap = (b, s) => b % 4 == 3 && s >= 8 && s % 2 == 0 }), scoreFrom: 8);
         AssertGood(r.Clap, 0.8, 0.05, "rolled clap");
+    }
+
+    [Fact]
+    public void Melody_and_hats_are_not_claps()
+    {
+        // A synth lead and produced hats (closed and open) over the kick and bass, but no clap or snare at all.
+        var r = Run(Render(new Spec { MelodyAmp = 0.3, RealHats = true, HatAmp = 0.3 }), scoreFrom: 5);
+        int beats = (int)((40 - 5) / (60 / 128.0));
+        Assert.True(r.Clap.FalsePositives <= beats / 16, $"{r.Clap.FalsePositives} clap detections over {beats} beats with no clap");
+        AssertGood(r.Kick);
+    }
+
+    [Fact]
+    public void Finds_claps_among_melody_and_hats()
+    {
+        // A clap over a pluck isn't as noisy as one on its own, so a few are passed over: better dark than flashing
+        // on the melody.
+        var r = Run(Render(new Spec { ClapAmp = 0.5, MelodyAmp = 0.3, RealHats = true, HatAmp = 0.3 }), scoreFrom: 8);
+        AssertGood(r.Clap, 0.8, 0.05, "clap");
+    }
+
+    [Fact]
+    public void Finds_snares_among_melody_and_hats()
+    {
+        var r = Run(Render(new Spec { ClapAmp = 0.5, Snare = true, MelodyAmp = 0.3, RealHats = true, HatAmp = 0.3, KickOnStep = s => s is 0 or 8 }), scoreFrom: 8);
+        AssertGood(r.Clap, 0.9, 0.05, "snare");
     }
 
     [Fact]

@@ -155,6 +155,8 @@ turn that on) live in `%LOCALAPPDATA%\Thump\songs`.
   sensitivity slider helps.
 - Long-tailed kicks (hardstyle, 808-style) ring longer than the ~130 ms check allows, so they may take longer to be
   trusted. Off-beat claps in a fast roll can be missed when they're much softer than the usual claps.
+- Clap/snare detection only trusts noisy hits (a clap is noise, a melody note or a hi-hat over a note isn't), so a clap
+  buried under an equally loud synth may stay dark rather than risk flashing on the melody.
 - Screen mode uses GDI capture: exclusive-fullscreen games and DRM-protected video may show up black (use borderless).
 - Only the primary monitor is sampled.
 
