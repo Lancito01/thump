@@ -165,6 +165,7 @@ public sealed class SyncEngine : IDisposable
                 _audio.KickDecayMs = s.KickDecayMs;
                 _audio.ClapSensitivity = s.ClapSensitivity;
                 _audio.ClapDecayMs = s.ClapDecayMs;
+                _audio.UseDrumModel = s.DrumModel;
                 _audio.AdaptSeconds = s.AdaptSeconds;
                 _audio.Tick(dt);
                 var f = _audio.Snapshot();
@@ -273,6 +274,8 @@ public sealed class SyncEngine : IDisposable
                 LightRole.Mids => mids,
                 LightRole.Highs => highs,
                 LightRole.Ambient => 1,
+                // A gentle shimmer, not a strobe: 16th hats would be far past 3 flashes a second.
+                LightRole.Hats => mix * (0.6 + 0.4 * f.HatEnvelope),
                 _ => mix + s.KickPunch * kick,
             };
             level = Math.Pow(Math.Clamp(level * s.Gain, 0, 1), s.Contrast);

@@ -1,3 +1,4 @@
+using System.IO;
 using NAudio.CoreAudioApi;
 using NAudio.Dsp;
 using NAudio.Wave;
@@ -20,7 +21,11 @@ public sealed record AudioFeatures(
     double ClapLearned,
     double KickConfidence,   // 0..1, how sure it was about the latest kick
     double ClapConfidence,
-    bool Remembered);        // this track's models came from the song cache
+    bool Remembered,         // this track's models came from the song cache
+    bool ModelActive = false,      // the learned drum model drives the kick and clap envelopes
+    double HatEnvelope = 0,        // hi-hats (model only)
+    double OldKickEnvelope = 0,    // the hand-tuned detectors, for comparison while the model is on
+    double OldClapEnvelope = 0);
 
 /// <summary>
 /// Captures whatever Windows is playing (WASAPI loopback) and turns it into band levels plus kick and clap/snare
@@ -62,7 +67,10 @@ public sealed class AudioAnalyzer : IDisposable
     readonly HitDetector _clap = HitDetector.Clap();
     readonly BeatTracker _beat = new();
     readonly ModelFeatures _model = new();
-    double _kickEnv, _clapEnv;
+    double _kickEnv, _clapEnv, _hatEnv, _oldKickEnv, _oldClapEnv;
+    DrumModel? _drums;
+    readonly double[] _lastDrumHit = [double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity];
+    readonly bool[] _drumAbove = new bool[DrumModel.Drums];
     long _kickCount, _clapCount;
     long _samplesSeen;
     bool _remembered;
@@ -76,6 +84,12 @@ public sealed class AudioAnalyzer : IDisposable
     public double AdaptSeconds { get; set; } = 6;
 
     public string DeviceName { get; private set; } = "";
+
+    /// <summary>Where the experimental drum model's weights are looked for. Not shipped yet.</summary>
+    public static readonly string DrumModelPath =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Thump", "drums.thdm");
+    /// <summary>Use the learned drum model (if its weights are installed) instead of the hand-tuned detectors.</summary>
+    public bool UseDrumModel { get; set; }
 
     /// <summary>
     /// Offline analysis only (dataset export, scoring): called after every hop with the time the lights would react,
@@ -116,7 +130,8 @@ public sealed class AudioAnalyzer : IDisposable
             // Let levels fall back to silence if loopback stops delivering (WASAPI sends nothing when idle).
             return new AudioFeatures((double[])_levels.Clone(), _kickEnv, _kickCount, _clapEnv, _clapCount,
                 _beat.Bpm, _beat.Locked, _beat.Confidence, _kick.Learned, _clap.Learned,
-                _kick.LastConfidence, _clap.LastConfidence, _remembered);
+                _kick.LastConfidence, _clap.LastConfidence, _remembered,
+                _drums != null && UseDrumModel, _hatEnv, _oldKickEnv, _oldClapEnv);
         }
     }
 
@@ -127,6 +142,9 @@ public sealed class AudioAnalyzer : IDisposable
         {
             _kickEnv *= Math.Exp(-dtSeconds * 1000 / Math.Max(20, KickDecayMs));
             _clapEnv *= Math.Exp(-dtSeconds * 1000 / Math.Max(20, ClapDecayMs));
+            _oldKickEnv *= Math.Exp(-dtSeconds * 1000 / Math.Max(20, KickDecayMs));
+            _oldClapEnv *= Math.Exp(-dtSeconds * 1000 / Math.Max(20, ClapDecayMs));
+            _hatEnv *= Math.Exp(-dtSeconds * 1000 / 90);
             if (Environment.TickCount64 - _lastAnalyzeMs > 250)
                 for (int b = 0; b < _levels.Length; b++) _levels[b] *= Math.Exp(-dtSeconds * 8);
         }
@@ -212,26 +230,76 @@ public sealed class AudioAnalyzer : IDisposable
             _clap.Sensitivity = ClapSensitivity;
             _spectrum.Compute(_fft, FftSize, binHz, dt);
             double time = (double)(_samplesSeen - Hop) / _sampleRate; // the hop the detectors are deciding about
+            bool model = UseDrumModel && LoadDrumModel();
             double? kick = _kick.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate);
             if (kick != null)
             {
-                _kickEnv = 1;
-                _kickCount++;
-                if (kick.Value >= 0.6) _beat.Observe(time, 1);
+                _oldKickEnv = 1;
+                if (!model)
+                {
+                    _kickEnv = 1;
+                    _kickCount++;
+                    if (kick.Value >= 0.6) _beat.Observe(time, 1);
+                }
             }
             double? clap = _clap.Process(_fft, FftSize, binHz, dt, _spectrum, _beat, _samplesSeen, Hop, _sampleRate);
             if (clap != null)
             {
-                _clapEnv = 1;
-                _clapCount++;
-                if (clap.Value >= 0.65) _beat.Observe(time, 0.6);
+                _oldClapEnv = 1;
+                if (!model)
+                {
+                    _clapEnv = 1;
+                    _clapCount++;
+                    if (clap.Value >= 0.65) _beat.Observe(time, 0.6);
+                }
             }
+            if (model || HopAnalyzed != null) _model.Compute(_fft, FftSize, binHz);
+            if (model) RunDrumModel(dt);
             _beat.Feed(_spectrum.Flux, time);
             _beat.Tick(time, dt);
             if (HopAnalyzed != null)
             {
-                _model.Compute(_fft, FftSize, binHz);
                 HopAnalyzed((double)_samplesSeen / _sampleRate, _model.Values, kick, clap);
+            }
+        }
+    }
+
+    bool LoadDrumModel()
+    {
+        if (_drums != null) return true;
+        if (_drumsTried) return false;
+        _drumsTried = true;
+        try { _drums = File.Exists(DrumModelPath) ? DrumModel.Load(DrumModelPath) : null; }
+        catch { _drums = null; }
+        return _drums != null;
+    }
+    bool _drumsTried;
+
+    /// <summary>
+    /// One hop of the learned model: a drum fires when its probability rises over its threshold, at most once per
+    /// refractory time. Sensitivity moves the threshold in log-odds, so 1 is the tuned balance and higher flashes more.
+    /// </summary>
+    void RunDrumModel(double dt)
+    {
+        var m = _drums!;
+        m.Step(_model.Values, dt);
+        double now = (double)_samplesSeen / _sampleRate;
+        // The model answers Delay hops after the hit; the beat tracker wants the hit's own time.
+        double hitTime = now - (m.Delay + 1) * dt;
+        double[] sensitivity = [KickSensitivity, ClapSensitivity, 1];
+        for (int d = 0; d < DrumModel.Drums; d++)
+        {
+            double th = m.Thresholds[d], logit = Math.Log(th / (1 - th)) - 2 * Math.Log(Math.Max(0.05, sensitivity[d]));
+            bool above = m.Probabilities[d] >= 1 / (1 + Math.Exp(-logit));
+            bool fire = above && !_drumAbove[d] && now - _lastDrumHit[d] >= m.Refractory;
+            _drumAbove[d] = above;
+            if (!fire) continue;
+            _lastDrumHit[d] = now;
+            switch (d)
+            {
+                case 0: _kickEnv = 1; _kickCount++; _beat.Observe(hitTime, 1); break;
+                case 1: _clapEnv = 1; _clapCount++; _beat.Observe(hitTime, 0.6); break;
+                default: _hatEnv = 1; break;
             }
         }
     }
@@ -252,6 +320,7 @@ public sealed class AudioAnalyzer : IDisposable
         {
             _kick.Reset();
             _clap.Reset();
+            // The drum model carries over: it knows drums in general, not this track.
             _beat.Reset(remembered?.BeatPeriod ?? 0);
             _remembered = remembered != null;
             if (remembered == null) return;
