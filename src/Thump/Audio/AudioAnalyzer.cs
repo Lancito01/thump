@@ -70,7 +70,7 @@ public sealed class AudioAnalyzer : IDisposable
     double _kickEnv, _clapEnv, _hatEnv, _oldKickEnv, _oldClapEnv;
     DrumModel? _drums;
     readonly double[] _lastDrumHit = [double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity];
-    readonly bool[] _drumAbove = new bool[DrumModel.Drums];
+    readonly bool[] _drumAbove = new bool[DrumModel.Drums], _drumFlash = new bool[DrumModel.Drums];
     long _kickCount, _clapCount;
     long _samplesSeen;
     bool _remembered;
@@ -276,8 +276,11 @@ public sealed class AudioAnalyzer : IDisposable
     bool _drumsTried;
 
     /// <summary>
-    /// One hop of the learned model: a drum fires when its probability rises over its threshold, at most once per
-    /// refractory time. Sensitivity moves the threshold in log-odds, so 1 is the tuned balance and higher flashes more.
+    /// One hop of the learned model. A drum starts a flash when its probability rises over a threshold a little below
+    /// the tuned one (at most once per refractory time), and the flash is as bright as the model is sure: full at the
+    /// tuned threshold and above, dim for a "maybe". While the probability stays up, the flash follows its peak, since
+    /// the model grows surer as more of the hit is heard. Sensitivity moves the thresholds in log-odds: 1 is the tuned
+    /// balance, higher flashes more.
     /// </summary>
     void RunDrumModel(double dt)
     {
@@ -289,18 +292,33 @@ public sealed class AudioAnalyzer : IDisposable
         double[] sensitivity = [KickSensitivity, ClapSensitivity, 1];
         for (int d = 0; d < DrumModel.Drums; d++)
         {
-            double th = m.Thresholds[d], logit = Math.Log(th / (1 - th)) - 2 * Math.Log(Math.Max(0.05, sensitivity[d]));
-            bool above = m.Probabilities[d] >= 1 / (1 + Math.Exp(-logit));
-            bool fire = above && !_drumAbove[d] && now - _lastDrumHit[d] >= m.Refractory;
+            double th = m.Thresholds[d], sure = Math.Log(th / (1 - th)) - 2 * Math.Log(Math.Max(0.05, sensitivity[d]));
+            // Log-odds below "sure" that still flash, dimly. Wider catches more but flickers: at 1, about 83% of kicks
+            // and claps flash (vs ~60%), and the extra false ones are the dim ones.
+            const double MaybeRange = 1;
+            double p = Math.Clamp(m.Probabilities[d], 1e-6, 1 - 1e-6), logit = Math.Log(p / (1 - p));
+            bool above = logit >= sure - MaybeRange;
+            bool start = above && !_drumAbove[d] && now - _lastDrumHit[d] >= m.Refractory;
             _drumAbove[d] = above;
-            if (!fire) continue;
-            _lastDrumHit[d] = now;
+            if (start)
+            {
+                _lastDrumHit[d] = now;
+                _drumFlash[d] = true;
+            }
+            if (!above) _drumFlash[d] = false;
+            if (!_drumFlash[d]) continue;
+            double brightness = Math.Clamp(0.35 + 0.65 * (logit - (sure - MaybeRange)) / MaybeRange, 0.35, 1);
             switch (d)
             {
-                case 0: _kickEnv = 1; _kickCount++; _beat.Observe(hitTime, 1); break;
-                case 1: _clapEnv = 1; _clapCount++; _beat.Observe(hitTime, 0.6); break;
-                default: _hatEnv = 1; break;
+                case 0: _kickEnv = Math.Max(_kickEnv, brightness); break;
+                case 1: _clapEnv = Math.Max(_clapEnv, brightness); break;
+                default: _hatEnv = Math.Max(_hatEnv, brightness); break;
             }
+            if (!start) continue;
+            // Only clear hits count as hits for the tempo and the counters.
+            bool clear = logit >= sure;
+            if (d == 0) { _kickCount++; if (clear) _beat.Observe(hitTime, 1); }
+            else if (d == 1) { _clapCount++; if (clear) _beat.Observe(hitTime, 0.6); }
         }
     }
 
