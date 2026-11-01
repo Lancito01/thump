@@ -1,6 +1,6 @@
-# Thump drum model
+# Kickstep: Thump's drum model
 
-A small, causal (no-lookahead) drum detector for live audio: every 10.7 ms it says whether a **kick**, a
+Kickstep is a small, causal (no-lookahead) drum detector for live audio: every 10.7 ms it says whether a **kick**, a
 **clap/snare** (rims included) or a **hi-hat** just started. It hears the last ~4 s, so it judges each hit by its
 sound *and* by where it falls in the groove, without any notion of songs, tempo or bars. It is what drives Thump's
 lights, and it's released under the same MIT licence as Thump. The weights are `src/Thump/Assets/drums.thdm` (also attached to each release).

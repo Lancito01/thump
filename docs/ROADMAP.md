@@ -22,9 +22,9 @@ version live: from whatever is playing, with no lookahead and no added delay, ea
 | Snare / clap (rims included) | a flash per hit |
 | Hats | a gentle shimmer on top of a base level, **not** flashes (16th hats are far past ~3 flashes a second) |
 
-- **One small learned drum model, three outputs** (kick, snare/clap, hats), ~37k weights, ~30 ms after the hit, no
+- **One small learned drum model, Kickstep, three outputs** (kick, snare/clap, hats), ~37k weights, ~30 ms after the hit, no
   lookahead. The flash is as bright as the model is sure, with a minimum below which it stays dark. See
-  [the model card](DRUM_MODEL.md).
+  [the model card](KICKSTEP.md).
 - **Trained by distillation from three teachers:** an offline drum transcriber on the user's own music library,
   EDM-HSE house loops (CC BY 4.0) and synthesised drum-machine grooves, both laid over the songs.
 - **Training stays private; the weights are MIT.** The training code, music and labels live in a local repo. The

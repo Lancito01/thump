@@ -239,7 +239,7 @@ public partial class MainWindow : Window
                 : f.Bpm > 0 ? $"~{f.Bpm:0} BPM · checking the beat… {f.TempoConfidence:0%}"
                 : "listening for the beat…";
             ModelText.Text = f.ModelActive
-                ? "Drums: learned model (kick, clap/snare, hats)"
+                ? "Drums: Kickstep (kick, clap/snare, hats)"
                 : $"Kick: {Learned(f.KickLearned, f.KickConfidence)}  ·  Clap/snare: {Learned(f.ClapLearned, f.ClapConfidence)}"
                              + (f.Remembered ? "  ·  remembered from last time" : "");
         }

@@ -2,36 +2,29 @@
 
 <h1 align="center">Thump</h1>
 
-<p align="center"><b>Bass-first music and screen sync for Philips Hue, for Windows 10/11.</b></p>
+<p align="center"><b>Drums-first music and screen sync for Philips Hue, for Windows 10/11.</b></p>
 
 <p align="center"><img src="docs/screenshot-colors.png" width="820" alt="Thump: album-art colours spread across four lights, live spectrum and the KICK, CLAP and HATS indicators"></p>
 
-Hue Sync's music mode is tuned for "average" music: it blends the whole spectrum into one loudness value. That's
-fine for pop, but on techno and house the lights end up following hats and synths instead of the thing you actually
-feel: the kick and the sub. Thump is built the other way round.
+Hue Sync's music mode blends the whole spectrum into one loudness value, so on electronic music the lights end up
+following synths, vocals and whatever is loudest instead of the thing you actually move to: the drums. Thump listens
+for the drums. **Kickstep**, its own small neural network, picks out every kick, clap/snare and hi-hat live, and each
+light follows the drum you give it: a hard flash on the kick, another on the backbeat, a shimmer with the hats.
 
-- **Bass-first audio engine.** The spectrum is split into six bands (sub, bass, low-mid, mid, high, air). Each band
-  levels itself automatically, and you decide how much each one drives the lights. The defaults lean hard on the low end.
-- **A learned drum detector that hears the groove: kick, clap/snare and hi-hats, live.** A small neural network
-  (about 213,000 weights, well under 1 % of a CPU core) listens to the last ~4 seconds of audio and says whether a
-  kick, a clap or snare (rims included) or a hi-hat just started, about 50 ms after the hit and with no lookahead.
-  Those 4 seconds let it hear where a hit sits in the groove, not just what it sounds like, so a quiet clap on the
-  2 and 4 still flashes and a kick-like click in the wrong place doesn't. It never ties a pattern to a song: it only
-  hears the audio, so DJ mixes in rekordbox or Serato, Spotify crossfades, hard cuts and pitch-riding are all fine,
-  and it lets go of the old groove within a couple of bars. Every hit gets a
-  **confidence**: the surer the model is, the brighter the flash, and below a minimum it stays dark, so there are no
-  constant dim flickers. The sensitivity sliders move how sure it has to be. The model's kicks also drive the tempo
-  tracker, which follows DJ pitch-riding, tempo ramps and hard cuts within 100–180 BPM.
-
-  It was trained offline on hundreds of electronic tracks, labelled by a bigger offline drum transcriber, plus drum
-  loops from [WaivOps EDM-HSE](https://doi.org/10.5281/zenodo.13769544) (CC BY 4.0) and synthesised drum-machine
-  grooves laid over the songs, all blended, cut and sped up into simulated DJ mixes. It ships inside Thump (`Audio/DrumModel.cs` runs it) and is MIT-licensed like the
-  rest; see the [model card](docs/DRUM_MODEL.md). The training code isn't public.
-  Claps that sound nothing like a drum machine's are still its weak spot.
-- **Remembers songs (opt-in).** Keeps what it learned about each song (~2 KB) so the next play is right from the first
-  beat. You set the disk space; the least recently played songs are forgotten first.
-- **Per-light roles.** Put a light on *Kick* or *Clap* for a hard pulse, *Hats* for a gentle shimmer, others on
-  *Bass*, *Mix*, *Mids*, *Highs* or *Ambient*.
+- **Kickstep: a live drum detector that hears the groove.** Every 10.7 ms it says whether a kick, a clap or snare
+  (rims included) or a hi-hat just started, about 50 ms after the hit, with no lookahead and well under 1 % of a CPU
+  core. It hears the last ~4 seconds, so it judges a hit by where it sits in the groove as well as by its sound: a
+  quiet clap on the 2 and 4 still flashes, and a kick-like click in the wrong place doesn't.
+- **Confidence, not just on/off.** The surer Kickstep is, the brighter the flash; below a minimum the light stays
+  dark, so there are no constant dim flickers. The sensitivity sliders move how sure it has to be.
+- **Works however you play music.** Spotify, YouTube, a DJ set in rekordbox or Serato: Thump hears what your PC
+  plays, not the player, and never ties a pattern to a song. Crossfades, live blends, hard cuts and pitch-riding are
+  all fine, and it lets go of the old groove within a couple of bars. Kickstep's kicks also drive a tempo tracker
+  that follows tempo ramps and DJ pitch-riding within 100–180 BPM.
+- **Per-light roles.** *Kick* and *Clap* flash on their drum and stay dark in between, *Hats* shimmers, *Bass* and
+  *Mix* follow the low end or the whole track, *Mids* and *Highs* the synths and cymbals, *Ambient* ignores the music.
+- **The rest of the mix, too.** Six auto-levelled bands (sub, bass, low-mid, mid, high, air) drive the *Mix* and
+  *Bass* roles, so lights that should breathe with the sub can, and kicks add a punch on top.
 - **Album-art colours (the default).** Uses the cover of whatever's playing (Spotify, browsers, Apple Music, Tidal,
   foobar2000, anything that shows up in Windows' media overlay) and changes with every track. **Every light gets its own
   colour.** When a cover has fewer colours than you have lights (a plain orange cover with 4 lights, say), Thump
@@ -39,7 +32,20 @@ feel: the kick and the sub. Thump is built the other way round.
 - **Screen colours.** Each light copies the part of the screen it sits next to. The music can still drive brightness.
 - **Presets and custom palettes**, with colour stepping on every kick, slow drift or static colours, plus an optional
   hi-hat "sparkle".
+- **Remembers songs (opt-in).** Keeps what it learned about each song (~2 KB) so the next play is right from the first
+  beat. You set the disk space; the least recently played songs are forgotten first.
 - **Hue Entertainment API streaming** (DTLS, ~50 updates/s), the same low-latency path Hue Sync uses.
+
+## Kickstep, the drum model
+
+Kickstep is Thump's own model, and it's MIT-licensed like the rest of Thump: ~213,000 weights in 8 causal dilated
+convolutions over 64 frequency bands. It was trained offline on hundreds of electronic tracks labelled by a bigger
+offline drum transcriber, plus house drum loops from [WaivOps EDM-HSE](https://doi.org/10.5281/zenodo.13769544)
+(CC BY 4.0) and synthesised drum-machine grooves, all laid over the songs and blended, cut and sped up into
+simulated DJ sets. The weights ship inside Thump (`Audio/DrumModel.cs` runs them) and are attached to every release
+as `drums.thdm`; the training code isn't public. On 116 held-out songs it scores F1 0.86 on kicks, 0.72 on
+claps/snares and 0.82 on hats. Details, scores and the file format are in the
+[model card](docs/KICKSTEP.md).
 
 > Thump is an independent open-source project. It is not affiliated with or endorsed by Philips or Signify.
 > "Philips Hue" and "Hue Sync" are trademarks of Signify.
@@ -74,16 +80,16 @@ Right-click the tray icon to start or stop syncing, or to quit. On the **App** t
 
 Only one app can stream to an entertainment area at a time, so close Hue Sync first.
 
-## Tuning tips (techno / house)
+## Tuning tips
 
 | Want | Do |
 |---|---|
 | Lights locked to the kick, dark in between | Set the main lights to *Kick*, raise **Contrast**, lower **Release** |
-| Rumbling sub that "breathes" | *Bass* role, **Sub** weight up, **Release** ~300 ms |
-| Kicks being missed | Raise **Kick sensitivity** a little |
-| Bassline triggering kicks | Lower **Kick sensitivity** |
 | A light on the backbeat | *Clap* role (claps, snares, rims); raise **Clap sensitivity** if some are missed |
 | A light that shimmers with the hats | *Hats* role |
+| Kicks being missed | Raise **Kick sensitivity** a little |
+| Bassline triggering kicks | Lower **Kick sensitivity** |
+| Rumbling sub that "breathes" | *Bass* role, **Sub** weight up, **Release** ~300 ms |
 | Right from the first beat on songs you replay | App tab → **Remember songs** |
 | Less flicker on dense tracks | Raise **Attack** to 30–50 ms |
 
@@ -115,7 +121,7 @@ Release build (single self-contained exe, then the per-user MSI; needs nothing b
 
 ```bash
 dotnet publish src/Thump -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-dotnet build installer -c Release -p:Version=0.3.0
+dotnet build installer -c Release -p:Version=0.5.0
 ```
 
 Pushing a `v*` tag does all of this on GitHub Actions and publishes the release.
@@ -124,7 +130,7 @@ Pushing a `v*` tag does all of this on GitHub Actions and publishes the release.
 
 ```
 WASAPI loopback ─▶ FFT (2048, hop 512) ─▶ 6 auto-levelled bands ─────────────┐
-                                     ├──▶ DrumModel: kick, clap/snare, hats ─┤
+                                     ├──▶ Kickstep: kick, clap/snare, hats ──┤
                                      └──▶ BeatTracker (all onsets) ──────────┤
 Media session (album art) ─▶ palette extraction ──────────────────────────────┤──▶ SyncEngine (50 Hz) ─▶ DTLS ─▶ Hue bridge
 Screen (GDI, 64×36) ─▶ per-light sampling by entertainment position ─────────┘
@@ -133,8 +139,8 @@ Screen (GDI, 64×36) ─▶ per-light sampling by entertainment position ──�
 | File | What it does |
 |---|---|
 | `Audio/AudioAnalyzer.cs` | Loopback capture, FFT, per-band adaptive levels |
-| `Audio/ModelFeatures.cs`, `Audio/DrumModel.cs` | The learned drum detector: 64 log bands in, one causal step per hop |
-| `Audio/HitDetector.cs` | The older hand-tuned per-song detectors (used if the model can't load) |
+| `Audio/ModelFeatures.cs`, `Audio/DrumModel.cs` | Kickstep: 64 log bands in, one causal step per hop |
+| `Audio/HitDetector.cs` | The older hand-tuned per-song detectors (used if Kickstep can't load) |
 | `Audio/BeatTracker.cs` | Tempo and beat grid from every onset, with a confidence for how well it predicts |
 | `Audio/SpectralFeatures.cs` | The 14-band fingerprint, the all-band onset signal and the kick/clap sound cues |
 | `Audio/SongCache.cs` | Opt-in, size-capped store of what was learned per song |
@@ -149,11 +155,11 @@ Screen (GDI, 64×36) ─▶ per-light sampling by entertainment position ──�
 | `installer/` | WiX per-user MSI |
 
 Settings, including the bridge credentials, live in `%APPDATA%\Thump\settings.json`. Remembered songs (only if you
-turn that on) live in `%LOCALAPPDATA%\Thump\songs`. A `drums.thdm` in `%LOCALAPPDATA%\Thump` replaces the built-in drum model.
+turn that on) live in `%LOCALAPPDATA%\Thump\songs`. A `drums.thdm` in `%LOCALAPPDATA%\Thump` replaces the built-in Kickstep weights (for trying out new ones).
 
 ## Known limitations
 
-- The drum model still misses some claps and snares, mostly unusual or heavily processed ones and muted pre-drop
+- Kickstep still misses some claps and snares, mostly unusual or heavily processed ones and muted pre-drop
   snares, and now and then takes a snare roll for hats. It would rather miss a clap than fake one; raising
   **Clap sensitivity** catches more, at the cost of the odd fake flash.
 - Screen mode uses GDI capture: exclusive-fullscreen games and DRM-protected video may show up black (use borderless).
@@ -161,7 +167,7 @@ turn that on) live in `%LOCALAPPDATA%\Thump\songs`. A `drums.thdm` in `%LOCALAPP
 
 ## Contributing
 
-Issues and PRs welcome. If a track fools the kick detector, a short WAV clip and a note on what went wrong is the most
+Issues and PRs welcome. If a track fools Kickstep (missed or fake kicks, claps or hats), a short WAV clip and a note on what went wrong is the most
 useful bug report.
 
 ## License
