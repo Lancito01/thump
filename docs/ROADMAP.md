@@ -24,7 +24,7 @@ version live: from whatever is playing, with no lookahead and no added delay, ea
 
 - **One small learned drum model, Kickstep, three outputs** (kick, snare/clap, hats), ~37k weights, ~30 ms after the hit, no
   lookahead. The flash is as bright as the model is sure, with a minimum below which it stays dark. See
-  [the model card](KICKSTEP.md).
+  [the model card](https://github.com/Lancito01/kickstep).
 - **Trained by distillation from three teachers:** an offline drum transcriber on the user's own music library,
   EDM-HSE house loops (CC BY 4.0) and synthesised drum-machine grooves, both laid over the songs.
 - **Training stays private; the weights are MIT.** The training code, music and labels live in a local repo. The
@@ -80,11 +80,3 @@ Keep them for now (a pattern-aware model may make the call clearer), then decide
 - Long-tailed kicks (hardstyle, 808): judge ring-out over a longer window when the kick band stays clean.
 - Remove the startup Run-key entry on uninstall, so it doesn't linger if "Start with Windows" was on.
 - Code-sign the MSI to stop SmartScreen warnings.
-
-## Maybe: Kickstep that learns while it plays
-
-A second Kickstep that waits ~200 ms (hears each clap's whole body) checks the live one's hits a moment later, and a
-tiny part of the live model (last layer or per-drum sensitivity) adapts to the current song, fading back to the
-shipped weights. Never self-graded (it would reinforce its own mistakes), never permanent (drift, unreproducible
-bugs). First test: train a 200 ms-delay model offline; only worth building if it's clearly better on claps. That
-model would also make a better offline teacher.

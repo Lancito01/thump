@@ -11,10 +11,9 @@ following synths, vocals and whatever is loudest instead of the thing you actual
 for the drums. **Kickstep**, its own small neural network, picks out every kick, clap/snare and hi-hat live, and each
 light follows the drum you give it: a hard flash on the kick, another on the backbeat, a shimmer with the hats.
 
-- **Kickstep: a live drum detector that hears the groove.** Every 10.7 ms it says whether a kick, a clap or snare
-  (rims included) or a hi-hat just started, about 50 ms after the hit, with no lookahead and well under 1 % of a CPU
-  core. It hears the last ~4 seconds, so it judges a hit by where it sits in the groove as well as by its sound: a
-  quiet clap on the 2 and 4 still flashes, and a kick-like click in the wrong place doesn't.
+- **Kickstep, a live drum detector that hears the groove.** It catches kicks, claps/snares (rims included) and
+  hi-hats about 50 ms after they hit, judging each one by its sound and by where it sits in the groove, so a quiet
+  clap on the 2 and 4 still flashes.
 - **Confidence, not just on/off.** The surer Kickstep is, the brighter the flash; below a minimum the light stays
   dark, so there are no constant dim flickers. The sensitivity sliders move how sure it has to be.
 - **Works however you play music.** Spotify, YouTube, a DJ set in rekordbox or Serato: Thump hears what your PC
@@ -36,16 +35,11 @@ light follows the drum you give it: a hard flash on the kick, another on the bac
   beat. You set the disk space; the least recently played songs are forgotten first.
 - **Hue Entertainment API streaming** (DTLS, ~50 updates/s), the same low-latency path Hue Sync uses.
 
-## Kickstep, the drum model
+## Kickstep
 
-Kickstep is Thump's own model, and it's MIT-licensed like the rest of Thump: ~213,000 weights in 8 causal dilated
-convolutions over 64 frequency bands. It was trained offline on hundreds of electronic tracks labelled by a bigger
-offline drum transcriber, plus house drum loops from [WaivOps EDM-HSE](https://doi.org/10.5281/zenodo.13769544)
-(CC BY 4.0) and synthesised drum-machine grooves, all laid over the songs and blended, cut and sped up into
-simulated DJ sets. The weights ship inside Thump (`Audio/DrumModel.cs` runs them) and are attached to every release
-as `drums.thdm`; the training code isn't public. On 116 held-out songs it scores F1 0.86 on kicks, 0.72 on
-claps/snares and 0.82 on hats. Details, scores and the file format are in the
-[model card](docs/KICKSTEP.md).
+Thump's drum detection is [Kickstep](https://github.com/Lancito01/kickstep), our own model, also released on its own
+(MIT) for use in other projects; its scores, details and roadmap live there. Its training used house drum loops from
+[WaivOps EDM-HSE](https://doi.org/10.5281/zenodo.13769544) (CC BY 4.0).
 
 > Thump is an independent open-source project. It is not affiliated with or endorsed by Philips or Signify.
 > "Philips Hue" and "Hue Sync" are trademarks of Signify.
