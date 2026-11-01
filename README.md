@@ -4,7 +4,7 @@
 
 <p align="center"><b>Bass-first music and screen sync for Philips Hue, for Windows 10/11.</b></p>
 
-<p align="center"><img src="docs/screenshot-colors.png" width="820" alt="Thump: album-art colours spread across four lights, live spectrum and kick indicator"></p>
+<p align="center"><img src="docs/screenshot-colors.png" width="820" alt="Thump: album-art colours spread across four lights, live spectrum and the KICK, CLAP and HATS indicators"></p>
 
 Hue Sync's music mode is tuned for "average" music: it blends the whole spectrum into one loudness value. That's
 fine for pop, but on techno and house the lights end up following hats and synths instead of the thing you actually

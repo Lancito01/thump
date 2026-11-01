@@ -176,6 +176,7 @@
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Bass"/> — sub + bass only, plus kick punch.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Kick"/> — flashes on detected kicks, dark in between.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Clap"/> — flashes on claps and snares, dark in between.<LineBreak/>
+                                    <Run FontWeight="SemiBold" Foreground="White" Text="Hats"/> — a gentle shimmer with the hi-hats over a steady base.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Mids / Highs"/> — synths &amp; vocals / hats &amp; cymbals.<LineBreak/>
                                     <Run FontWeight="SemiBold" Foreground="White" Text="Ambient"/> — steady colour, ignores the music.
                                 </TextBlock>
@@ -222,8 +223,8 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <TextBlock Text="Kick, clap and snare" Style="{StaticResource CardTitle}"/>
-                                <TextBlock Style="{StaticResource Hint}" Text="A small learned model, trained on hundreds of songs, picks out kicks, claps or snares, and hi-hats as they play, about 30 ms after each hit. The surer it is, the brighter the flash; when it is unsure, the light stays dark. Sensitivity moves how sure it has to be."/>
+                                <TextBlock Text="Kick, clap and hats" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource Hint}" Text="A small learned model, trained on hundreds of songs, picks out kicks, claps or snares, and hi-hats as they play, about 50 ms after each hit. It hears the last few seconds, so it knows the groove as well as the sound. The surer it is, the brighter the flash; when it is unsure, the light stays dark. Sensitivity moves how sure it has to be."/>
                                 <local:LabeledSlider Label="Kick punch" Value="{Binding KickPunch}" Minimum="0" Maximum="1.5" Format="0%" Tip="Extra flash added to Mix and Bass lights on each kick."/>
                                 <local:LabeledSlider Label="Kick sensitivity" Value="{Binding KickSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Raise if kicks are missed, lower if bass notes trigger it."/>
                                 <local:LabeledSlider Label="Kick decay" Value="{Binding KickDecayMs}" Minimum="40" Maximum="600" Format="0 ms" Tip="Length of each kick flash."/>

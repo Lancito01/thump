@@ -361,13 +361,19 @@ public partial class MainWindow : Window
             var areas = await client.GetEntertainmentAreasAsync();
             AreaBox.ItemsSource = areas;
             AreaBox.SelectedItem = areas.FirstOrDefault(a => a.Id == _settings.AreaId) ?? areas.FirstOrDefault();
-            if (areas.Count == 0 && !quiet)
-                PairStatus.Text = "No entertainment areas yet — create one in the Hue app.";
+            // Also on startup: the pairing is remembered, so say so (only Pair used to set this).
+            PairStatus.Text = areas.Count == 0 && !quiet
+                ? "No entertainment areas yet — create one in the Hue app."
+                : $"Paired with {_settings.BridgeIp} ✓";
         }
         catch (Exception ex)
         {
             if (!quiet) PairStatus.Text = $"Couldn't load areas: {ex.Message}";
-            else StatusText.Text = $"Bridge unreachable ({ex.Message}) — preview mode.";
+            else
+            {
+                PairStatus.Text = $"Paired with {_settings.BridgeIp}, but it isn't answering right now.";
+                StatusText.Text = $"Bridge unreachable ({ex.Message}) — preview mode.";
+            }
         }
     }
 
