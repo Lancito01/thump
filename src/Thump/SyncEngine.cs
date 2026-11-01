@@ -16,7 +16,7 @@ public sealed class SyncEngine : IDisposable
     const double FrameHz = 50;
 
     readonly AppSettings _settings;
-    readonly AudioAnalyzer _audio = new();
+    readonly AudioAnalyzer _audio = new() { UseDrumModel = true };
     readonly AlbumArtSource _albumArt = new();
     readonly SongCache _songs = new(SongCache.DefaultDir);
     readonly object _trackLock = new();
@@ -165,7 +165,6 @@ public sealed class SyncEngine : IDisposable
                 _audio.KickDecayMs = s.KickDecayMs;
                 _audio.ClapSensitivity = s.ClapSensitivity;
                 _audio.ClapDecayMs = s.ClapDecayMs;
-                _audio.UseDrumModel = s.DrumModel;
                 _audio.AdaptSeconds = s.AdaptSeconds;
                 _audio.Tick(dt);
                 var f = _audio.Snapshot();

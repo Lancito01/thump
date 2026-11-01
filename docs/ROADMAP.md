@@ -38,8 +38,11 @@ instrument it follows. Each light picks a source:
   real-time source separation, much less reliable than drums. If anything, a continuous "melody energy" source like
   Bass, not hits.
 - **Training stays private.** The training code, the music and the labels live in a local repo that isn't
-  published. Only the weights ship, inside Thump. The teacher (ADTOF) is CC BY-NC-SA, so before a release with the
-  model, settle whether weights distilled from its labels can ship in a free, MIT-licensed app, or switch teachers.
+  published. Only the weights ship, inside Thump, under the app's MIT licence: the model is our own, trained on labels
+  (none of the teachers' weights, code or data are bundled). EDM-HSE loops (CC BY 4.0) are credited in the README.
+- **Shipped (first version).** Kick, clap/snare and hats from one model, confidence-to-brightness, a *Hats* role.
+  Next: a bigger model, and a labelling tool so hand-corrected songs from bug reports become training data that
+  counts far more than the teachers' labels.
 - **Before claiming it's the first:** check for existing live per-instrument light sync (lighting consoles, DJ
   lighting add-ons, smart-light apps) so the README and any store listing say only what's true.
 

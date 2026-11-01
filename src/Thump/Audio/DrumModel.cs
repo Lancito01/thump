@@ -62,7 +62,13 @@ public sealed class DrumModel
 
     public static DrumModel Load(string path)
     {
-        using var r = new BinaryReader(File.OpenRead(path));
+        using var s = File.OpenRead(path);
+        return Load(s);
+    }
+
+    public static DrumModel Load(Stream stream)
+    {
+        using var r = new BinaryReader(stream);
         return new DrumModel(r);
     }
 

@@ -85,10 +85,10 @@ public sealed class AudioAnalyzer : IDisposable
 
     public string DeviceName { get; private set; } = "";
 
-    /// <summary>Where the experimental drum model's weights are looked for. Not shipped yet.</summary>
+    /// <summary>A drum model here replaces the one built into Thump (for trying out a newly trained one).</summary>
     public static readonly string DrumModelPath =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Thump", "drums.thdm");
-    /// <summary>Use the learned drum model (if its weights are installed) instead of the hand-tuned detectors.</summary>
+    /// <summary>Use the learned drum model instead of the hand-tuned detectors (Thump does; the tests mostly don't).</summary>
     public bool UseDrumModel { get; set; }
 
     /// <summary>
@@ -269,7 +269,11 @@ public sealed class AudioAnalyzer : IDisposable
         if (_drums != null) return true;
         if (_drumsTried) return false;
         _drumsTried = true;
-        try { _drums = File.Exists(DrumModelPath) ? DrumModel.Load(DrumModelPath) : null; }
+        try
+        {
+            if (File.Exists(DrumModelPath)) _drums = DrumModel.Load(DrumModelPath);
+            else if (typeof(DrumModel).Assembly.GetManifestResourceStream("drums.thdm") is { } s) _drums = DrumModel.Load(s);
+        }
         catch { _drums = null; }
         return _drums != null;
     }

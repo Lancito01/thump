@@ -31,6 +31,8 @@
   <ItemGroup>
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets/thump.ico" />
+    <!-- The drum model's weights (trained in a separate, private repo; see docs/ROADMAP.md) -->
+    <EmbeddedResource Include="Assets\drums.thdm" LogicalName="drums.thdm" />
   </ItemGroup>
 
   <ItemGroup>

@@ -95,9 +95,6 @@ public sealed class AppSettings : Observable
     public double KickDecayMs { get => _kickDecayMs; set => Set(ref _kickDecayMs, value); }
     public double ClapSensitivity { get => _clapSensitivity; set => Set(ref _clapSensitivity, value); }
     public double ClapDecayMs { get => _clapDecayMs; set => Set(ref _clapDecayMs, value); }
-    /// <summary>Experimental: the learned drum model decides kicks, claps and hats.</summary>
-    public bool DrumModel { get => _drumModel; set => Set(ref _drumModel, value); }
-    bool _drumModel;
     public double AttackMs { get => _attackMs; set => Set(ref _attackMs, value); }
     public double ReleaseMs { get => _releaseMs; set => Set(ref _releaseMs, value); }
     public double Contrast { get => _contrast; set => Set(ref _contrast, value); }

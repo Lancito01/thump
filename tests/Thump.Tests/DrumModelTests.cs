@@ -36,4 +36,14 @@ public class DrumModelTests
         Buffer.BlockCopy(b, 0, f, 0, b.Length);
         return f;
     }
+
+    [Fact]
+    public void Ships_inside_Thump()
+    {
+        using var s = typeof(DrumModel).Assembly.GetManifestResourceStream("drums.thdm");
+        Assert.NotNull(s);
+        var m = DrumModel.Load(s);
+        m.Step(new float[ModelFeatures.Bands], 512 / 48000.0);
+        Assert.All(m.Probabilities, p => Assert.InRange(p, 0, 1));
+    }
 }
