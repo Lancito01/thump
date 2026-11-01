@@ -21,7 +21,8 @@ feel: the kick and the sub. Thump is built the other way round.
 
   It was trained offline on hundreds of electronic tracks, labelled by a bigger offline drum transcriber, plus drum
   loops from [WaivOps EDM-HSE](https://doi.org/10.5281/zenodo.13769544) (CC BY 4.0) and synthesised drum-machine
-  grooves laid over the songs. It ships inside Thump (`Audio/DrumModel.cs` runs it); the training code isn't public.
+  grooves laid over the songs. It ships inside Thump (`Audio/DrumModel.cs` runs it) and is MIT-licensed like the
+  rest; see the [model card](docs/DRUM_MODEL.md). The training code isn't public.
   Claps that sound nothing like a drum machine's are still its weak spot.
 - **Remembers songs (opt-in).** Keeps what it learned about each song (~2 KB) so the next play is right from the first
   beat. You set the disk space; the least recently played songs are forgotten first.
