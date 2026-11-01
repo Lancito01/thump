@@ -3,10 +3,11 @@ using System.IO;
 namespace Thump.Audio;
 
 /// <summary>
-/// The learned drum detector: a few causal dilated convolutions over the last ~160 ms of <see cref="ModelFeatures"/>,
-/// giving the probability that a kick, a snare/clap or a hi-hat started <see cref="Delay"/> hops ago. It runs one
-/// hop at a time and only computes the newest step, keeping each layer's recent inputs in a ring, so a hop costs a
-/// few tens of thousands of multiply-adds. Trained offline (thump-drums); the weights come from a .thdm file.
+/// The learned drum detector: causal dilated convolutions over the last few seconds of <see cref="ModelFeatures"/>
+/// (enough to hear the groove, never tied to a song), giving the probability that a kick, a snare/clap or a hi-hat
+/// started <see cref="Delay"/> hops ago. It runs one hop at a time and only computes the newest step, keeping each
+/// layer's recent inputs in a ring, so a hop costs a few hundred thousand multiply-adds at most. Trained offline
+/// (thump-drums); the weights come from a .thdm file (version 1, or 2 with residual layers).
 /// </summary>
 public sealed class DrumModel
 {
@@ -15,6 +16,7 @@ public sealed class DrumModel
     sealed class Layer
     {
         public int In, Out, Kernel, Dilation;
+        public bool Residual;                // adds its input to its output
         public float[] W = [], B = [];       // W[o, i, k], row-major
         public float[] History = [];         // the last (Kernel - 1) * Dilation + 1 inputs, In floats each
         public int Pos;
@@ -35,7 +37,9 @@ public sealed class DrumModel
 
     DrumModel(BinaryReader r)
     {
-        if (new string(r.ReadChars(4)) != "THDM" || r.ReadInt32() != 1) throw new InvalidDataException("Not a drum model");
+        if (new string(r.ReadChars(4)) != "THDM") throw new InvalidDataException("Not a drum model");
+        int version = r.ReadInt32();
+        if (version is not (1 or 2)) throw new InvalidDataException($"Drum model version {version} is not supported");
         Delay = r.ReadInt32();
         GainTau = r.ReadSingle();
         Refractory = r.ReadSingle();
@@ -44,6 +48,8 @@ public sealed class DrumModel
         for (int l = 0; l < _layers.Length; l++)
         {
             var y = new Layer { In = r.ReadInt32(), Out = r.ReadInt32(), Kernel = r.ReadInt32(), Dilation = r.ReadInt32() };
+            if (version >= 2) y.Residual = (r.ReadInt32() & 1) != 0;
+            if (y.Residual && y.In != y.Out) throw new InvalidDataException("Wrong model shape");
             y.W = ReadFloats(r, y.Out * y.In * y.Kernel);
             y.B = ReadFloats(r, y.Out);
             y.History = new float[((y.Kernel - 1) * y.Dilation + 1) * y.In];
@@ -106,7 +112,7 @@ public sealed class DrumModel
                     var h = y.History.AsSpan(slot * y.In, y.In);
                     for (int i = 0; i < y.In; i++) sum += w[i * y.Kernel + k] * h[i];
                 }
-                y.Output[o] = l < _layers.Length - 1 ? Math.Max(0, sum) : 1 / (1 + MathF.Exp(-sum));
+                y.Output[o] = l < _layers.Length - 1 ? (y.Residual ? x[o] : 0) + Math.Max(0, sum) : 1 / (1 + MathF.Exp(-sum));
             }
             y.Pos = (y.Pos + 1) % slots;
             x = y.Output;

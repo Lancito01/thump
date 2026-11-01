@@ -12,16 +12,20 @@ feel: the kick and the sub. Thump is built the other way round.
 
 - **Bass-first audio engine.** The spectrum is split into six bands (sub, bass, low-mid, mid, high, air). Each band
   levels itself automatically, and you decide how much each one drives the lights. The defaults lean hard on the low end.
-- **A learned drum detector: kick, clap/snare and hi-hats, live.** A small neural network (about 37,000 weights,
-  a fraction of a millisecond per step) listens to the last ~160 ms of audio and says whether a kick, a clap or snare
-  (rims included) or a hi-hat just started, about 30 ms after the hit and with no lookahead. Every hit gets a
+- **A learned drum detector that hears the groove: kick, clap/snare and hi-hats, live.** A small neural network
+  (about 213,000 weights, well under 1 % of a CPU core) listens to the last ~4 seconds of audio and says whether a
+  kick, a clap or snare (rims included) or a hi-hat just started, about 50 ms after the hit and with no lookahead.
+  Those 4 seconds let it hear where a hit sits in the groove, not just what it sounds like, so a quiet clap on the
+  2 and 4 still flashes and a kick-like click in the wrong place doesn't. It never ties a pattern to a song: it only
+  hears the audio, so DJ mixes in rekordbox or Serato, Spotify crossfades, hard cuts and pitch-riding are all fine,
+  and it lets go of the old groove within a couple of bars. Every hit gets a
   **confidence**: the surer the model is, the brighter the flash, and below a minimum it stays dark, so there are no
   constant dim flickers. The sensitivity sliders move how sure it has to be. The model's kicks also drive the tempo
   tracker, which follows DJ pitch-riding, tempo ramps and hard cuts within 100–180 BPM.
 
   It was trained offline on hundreds of electronic tracks, labelled by a bigger offline drum transcriber, plus drum
   loops from [WaivOps EDM-HSE](https://doi.org/10.5281/zenodo.13769544) (CC BY 4.0) and synthesised drum-machine
-  grooves laid over the songs. It ships inside Thump (`Audio/DrumModel.cs` runs it) and is MIT-licensed like the
+  grooves laid over the songs, all blended, cut and sped up into simulated DJ mixes. It ships inside Thump (`Audio/DrumModel.cs` runs it) and is MIT-licensed like the
   rest; see the [model card](docs/DRUM_MODEL.md). The training code isn't public.
   Claps that sound nothing like a drum machine's are still its weak spot.
 - **Remembers songs (opt-in).** Keeps what it learned about each song (~2 KB) so the next play is right from the first
@@ -150,8 +154,8 @@ turn that on) live in `%LOCALAPPDATA%\Thump\songs`. A `drums.thdm` in `%LOCALAPP
 ## Known limitations
 
 - The drum model still misses some claps and snares, mostly unusual or heavily processed ones and muted pre-drop
-  snares, and now and then takes a snare roll for hats. Raising **Clap sensitivity** catches more, at the cost of
-  the odd fake flash.
+  snares, and now and then takes a snare roll for hats. It would rather miss a clap than fake one; raising
+  **Clap sensitivity** catches more, at the cost of the odd fake flash.
 - Screen mode uses GDI capture: exclusive-fullscreen games and DRM-protected video may show up black (use borderless).
 - Only the primary monitor is sampled.
 

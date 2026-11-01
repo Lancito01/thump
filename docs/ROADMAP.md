@@ -32,23 +32,18 @@ version live: from whatever is playing, with no lookahead and no added delay, ea
   inside Thump and are attached to each release.
 - Scores on 116 held-out songs, F1: kick 0.79, clap/snare 0.65, hats 0.76 (0.3.3: kick 0.69, clap/snare 0.32).
 
-## Next: a bigger model that knows the groove
+## Done in 0.5: a bigger model that knows the groove
 
-The model still misses unusual or processed claps (Typo - Stick Move is the reference track), muted pre-drop
-snares, and sometimes takes a snare roll for hats. Its misses mostly sit just under the threshold, and training was
-still improving when it stopped, so it is too small rather than wrongly taught.
+- **~4 s of memory, no song boundaries.** 8 residual dilated convolutions, 96 wide, ~213k weights. It hears where a
+  hit sits in the groove, so borderline hits come out the same way every bar. "Now playing" stays a UI thing: the
+  model only hears audio, and training is built like a DJ set (blends with both tracks at full volume, hard cuts,
+  ±6 % pitch, drums dropping in and out), so it lets go of a groove within a couple of bars.
+- **Decides ~21 ms later (~50 ms after the hit).** The extra time lets it hear a clap's body, not just its first
+  click, which cut fake claps (mostly landing with a kick or hat) by about two-thirds. Not noticeable by ear.
+- Scores on the same 116 held-out songs, F1: kick 0.86, clap/snare 0.72 (precision 0.78 → 0.92), hats 0.82.
+  Checked by ear on the reference tracks: the best version yet.
 
-- **Bigger.** Wider layers (96–128 channels), maybe a 2-D convolution over frequency first, and longer training.
-  Cost stays tiny: ~10× today's work is still ~0.3 ms per hop and well under 1 % of a core, and the ~30 ms reaction
-  time comes from the FFT, not the network, so it doesn't change.
-- **Pattern memory.** Today the model hears ~160 ms and judges every hit by sound alone. With a few seconds of memory
-  (more dilated layers or a small recurrent layer) it can learn the groove: "the last four kicks were this far
-  apart, so the next one is about due", "claps here land on 2 and 4". No BPM or bar counter needed: it learns the
-  spacing from the hits themselves. That should make borderline hits come out the same way every bar. Watch for it
-  "expecting" a hit and flashing on silence (a fake drop): the labels only mark real hits, but listen for it.
-- **Measured the same way**, against 0.4 on the same held-out songs, plus by ear on the reference tracks.
-
-## Then: Andy as the teacher
+## Next: Andy as the teacher
 
 A labelling tool for songs from bug reports: open a song, see what the current model thinks is a kick, clap or hat
 on a waveform you can play, then move, delete or tap in hits (taps snap to the nearest onset). ~20 minutes a song.
