@@ -9,42 +9,71 @@
 - *Clap* light role, CLAP LED, confidence readout in the live panel.
 - Opt-in "Remember songs" with a disk cap, least recently played forgotten first.
 
-## Next: live, instrument-based light sync
+## Done in 0.4: live, instrument-based light sync
 
-DJ software (rekordbox, Serato) splits a track into stems after analysing the whole file. Thump has to do the
-simpler version live: from whatever is playing, with no lookahead and no added delay, tell each light which
-instrument it follows. Each light picks a source:
+DJ software (rekordbox, Serato) splits a track into stems after analysing the whole file. Thump does the simpler
+version live: from whatever is playing, with no lookahead and no added delay, each light follows an instrument.
 
-| Source | Shown as | Status |
-| --- | --- | --- |
-| Mix | brightness follows the whole track | done |
-| Bass | brightness follows the low end | done |
-| Kick | a flash per hit | done (hand-tuned detector), to move to the model |
-| Snare / clap | a flash per hit | not reliable yet; the main reason for the model |
-| Hats | a gentle shimmer on top of a base level, **not** flashes | new |
+| Source | Shown as |
+| --- | --- |
+| Mix | brightness follows the whole track |
+| Bass | brightness follows the low end |
+| Kick | a flash per hit |
+| Snare / clap (rims included) | a flash per hit |
+| Hats | a gentle shimmer on top of a base level, **not** flashes (16th hats are far past ~3 flashes a second) |
 
-- **One small drum model, three outputs** (kick, snare/clap, hats): the standard set in drum transcription. It runs
-  every hop (~11 ms) on the past only, so latency stays where it is today (~11–25 ms after the hit), well inside the
-  100 ms budget. Small enough for plain C# or ONNX Runtime on the CPU, no GPU.
-- **Trained by distillation.** An offline drum-transcription model, which may look ahead, labels a library of real
-  tracks (the user's own music, across genres); the live model learns to match it seeing only the past. Where the
-  teacher is wrong, the student learns the mistake, so the labels get spot-checked.
-- **Hats as shimmer, not strobe.** 16th hats at 128 BPM are ~8.5 hits a second, far past the ~3 flashes a second
-  photosensitivity guideline. They modulate brightness slightly instead.
-- **Measured before it ships.** Each output is scored separately against labels on a fixed set of tracks (ones the
-  current detectors get wrong and ones they get right), compared with 0.3.3. An output that doesn't clearly win stays
-  hidden from the light options; the current detectors remain the fallback.
+- **One small learned drum model, three outputs** (kick, snare/clap, hats), ~37k weights, ~30 ms after the hit, no
+  lookahead. The flash is as bright as the model is sure, with a minimum below which it stays dark. See
+  [the model card](DRUM_MODEL.md).
+- **Trained by distillation from three teachers:** an offline drum transcriber on the user's own music library,
+  EDM-HSE house loops (CC BY 4.0) and synthesised drum-machine grooves, both laid over the songs.
+- **Training stays private; the weights are MIT.** The training code, music and labels live in a local repo. The
+  model is our own, trained on labels; none of the teachers' weights, code or data are bundled. The weights ship
+  inside Thump and are attached to each release.
+- Scores on 116 held-out songs, F1: kick 0.79, clap/snare 0.65, hats 0.76 (0.3.3: kick 0.69, clap/snare 0.32).
+
+## Next: a bigger model that knows the groove
+
+The model still misses unusual or processed claps (Typo - Stick Move is the reference track), muted pre-drop
+snares, and sometimes takes a snare roll for hats. Its misses mostly sit just under the threshold, and training was
+still improving when it stopped, so it is too small rather than wrongly taught.
+
+- **Bigger.** Wider layers (96–128 channels), maybe a 2-D convolution over frequency first, and longer training.
+  Cost stays tiny: ~10× today's work is still ~0.3 ms per hop and well under 1 % of a core, and the ~30 ms reaction
+  time comes from the FFT, not the network, so it doesn't change.
+- **Pattern memory.** Today the model hears ~160 ms and judges every hit by sound alone. With a few seconds of memory
+  (more dilated layers or a small recurrent layer) it can learn the groove: "the last four kicks were this far
+  apart, so the next one is about due", "claps here land on 2 and 4". No BPM or bar counter needed: it learns the
+  spacing from the hits themselves. That should make borderline hits come out the same way every bar. Watch for it
+  "expecting" a hit and flashing on silence (a fake drop): the labels only mark real hits, but listen for it.
+- **Measured the same way**, against 0.4 on the same held-out songs, plus by ear on the reference tracks.
+
+## Then: Andy as the teacher
+
+A labelling tool for songs from bug reports: open a song, see what the current model thinks is a kick, clap or hat
+on a waveform you can play, then move, delete or tap in hits (taps snap to the nearest onset). ~20 minutes a song.
+These hand-checked labels are the ground truth: in training they count far more than the teachers' (10–50×), and a
+few are kept back as an exam the model never trains on, so there's finally a score that measures what a person
+hears rather than what the teacher says. Same `time,drum` CSVs as the teachers, so training reads them as is.
+
+## Later: tidy up after the model
+
+With the model on, the beat tracker only feeds the BPM readout, the old hand-tuned detectors are only a fallback
+for a model that is built into the exe, and "Remember songs" stores what those detectors learned plus the tempo.
+Keep them for now (a pattern-aware model may make the call clearer), then decide:
+- **Beat tracker:** keep as a BPM readout, or remove.
+- **Old detectors:** remove once the model has proven itself.
+- **Remember songs:** remove, or repurpose for per-song things the model can't know, like hand-made corrections from
+  the labelling tool or a per-song sensitivity nudge ("this track's claps need +0.5").
+- **Publish the model more widely** (ONNX export, a model page) once it's good enough that others would want it.
+
+## Still worth checking
+
+- **Before claiming it's the first:** check for existing live per-instrument light sync (lighting consoles, DJ
+  lighting add-ons, smart-light apps) so the README and any store listing say only what's true.
 - **Not in scope (yet): synths, vocals.** They overlap in frequency and sustain, so splitting them live is
   real-time source separation, much less reliable than drums. If anything, a continuous "melody energy" source like
   Bass, not hits.
-- **Training stays private.** The training code, the music and the labels live in a local repo that isn't
-  published. Only the weights ship, inside Thump, under the app's MIT licence: the model is our own, trained on labels
-  (none of the teachers' weights, code or data are bundled). EDM-HSE loops (CC BY 4.0) are credited in the README.
-- **Shipped (first version).** Kick, clap/snare and hats from one model, confidence-to-brightness, a *Hats* role.
-  Next: a bigger model, and a labelling tool so hand-corrected songs from bug reports become training data that
-  counts far more than the teachers' labels.
-- **Before claiming it's the first:** check for existing live per-instrument light sync (lighting consoles, DJ
-  lighting add-ons, smart-light apps) so the README and any store listing say only what's true.
 
 ## Other ideas
 
