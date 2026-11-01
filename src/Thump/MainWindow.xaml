@@ -74,6 +74,10 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,10">
+                                <Border x:Name="HatPill" DockPanel.Dock="Right" CornerRadius="9" Padding="10,2" Margin="6,0,0,0" Background="{StaticResource Track}"
+                                        ToolTip="Hi-hats (drum model only)" Visibility="Collapsed">
+                                    <TextBlock x:Name="HatText" Text="HATS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
+                                </Border>
                                 <Border x:Name="ClapPill" DockPanel.Dock="Right" CornerRadius="9" Padding="10,2" Margin="6,0,0,0" Background="{StaticResource Track}"
                                         ToolTip="Claps and snares">
                                     <TextBlock x:Name="ClapText" Text="CLAP" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Muted}"/>
@@ -219,7 +223,7 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="Kick, clap and snare" Style="{StaticResource CardTitle}"/>
-                                <TextBlock Style="{StaticResource Hint}" Text="Thump learns each track by ear: what its kick and its clap or snare sound like, how hard they hit, and the tempo (even as it drifts). Every hit gets a confidence, and the lights only flash when it is sure the sound was the drum, wherever it lands in the bar. Until it has heard the real thing (say, an intro with no drums yet), those lights stay dark."/>
+                                <TextBlock Style="{StaticResource Hint}" Text="A small learned model, trained on hundreds of songs, picks out kicks, claps or snares, and hi-hats as they play, about 30 ms after each hit. The surer it is, the brighter the flash; when it is unsure, the light stays dark. Sensitivity moves how sure it has to be."/>
                                 <local:LabeledSlider Label="Kick punch" Value="{Binding KickPunch}" Minimum="0" Maximum="1.5" Format="0%" Tip="Extra flash added to Mix and Bass lights on each kick."/>
                                 <local:LabeledSlider Label="Kick sensitivity" Value="{Binding KickSensitivity}" Minimum="0.3" Maximum="2.5" Format="0.00" Tip="Raise if kicks are missed, lower if bass notes trigger it."/>
                                 <local:LabeledSlider Label="Kick decay" Value="{Binding KickDecayMs}" Minimum="40" Maximum="600" Format="0 ms" Tip="Length of each kick flash."/>

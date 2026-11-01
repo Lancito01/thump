@@ -9,29 +9,47 @@
 - *Clap* light role, CLAP LED, confidence readout in the live panel.
 - Opt-in "Remember songs" with a disk cap, least recently played forgotten first.
 
-## Next: a shipped prior for "what a kick / clap sounds like"
+## Next: live, instrument-based light sync
 
-The first seconds of a song rely on three hand-written cues per drum (where its energy sits, whether it punches out
-of the mix, how it rings out). A tiny classifier trained offline could replace them:
+DJ software (rekordbox, Serato) splits a track into stems after analysing the whole file. Thump has to do the
+simpler version live: from whatever is playing, with no lookahead and no added delay, tell each light which
+instrument it follows. Each light picks a source:
 
-- **Input:** the features the detectors already compute at each onset (14-band rise, absolute spectral shape, the
-  ring-out levels a few hops later). **Output:** P(kick), P(clap/snare), P(neither). A 2-layer MLP of a few thousand
-  weights runs in microseconds in plain C#, no ML runtime needed.
-- **Training data is the hard part.** Public drum-transcription sets (ENST-Drums, MDB Drums, IDMT-SMT-Drums, ADTOF,
-  E-GMD) are mostly acoustic kits or have non-commercial licences, which matters for weights we ship. Options: render
-  our own labelled loops from royalty-free one-shots across genres, and/or label real tracks semi-automatically with
-  the current detector plus manual review.
-- **It would only replace the generic prior.** The per-song models keep learning the actual track, and the ring-out
-  check keeps labelling, so a wrong prior gets corrected within a few bars.
-- **Measure first:** collect a set of real tracks with hand-marked first-kick times and count false flashes before
-  the first real kick, with and without the classifier.
+| Source | Shown as | Status |
+| --- | --- | --- |
+| Mix | brightness follows the whole track | done |
+| Bass | brightness follows the low end | done |
+| Kick | a flash per hit | done (hand-tuned detector), to move to the model |
+| Snare / clap | a flash per hit | not reliable yet; the main reason for the model |
+| Hats | a gentle shimmer on top of a base level, **not** flashes | new |
+
+- **One small drum model, three outputs** (kick, snare/clap, hats): the standard set in drum transcription. It runs
+  every hop (~11 ms) on the past only, so latency stays where it is today (~11–25 ms after the hit), well inside the
+  100 ms budget. Small enough for plain C# or ONNX Runtime on the CPU, no GPU.
+- **Trained by distillation.** An offline drum-transcription model, which may look ahead, labels a library of real
+  tracks (the user's own music, across genres); the live model learns to match it seeing only the past. Where the
+  teacher is wrong, the student learns the mistake, so the labels get spot-checked.
+- **Hats as shimmer, not strobe.** 16th hats at 128 BPM are ~8.5 hits a second, far past the ~3 flashes a second
+  photosensitivity guideline. They modulate brightness slightly instead.
+- **Measured before it ships.** Each output is scored separately against labels on a fixed set of tracks (ones the
+  current detectors get wrong and ones they get right), compared with 0.3.3. An output that doesn't clearly win stays
+  hidden from the light options; the current detectors remain the fallback.
+- **Not in scope (yet): synths, vocals.** They overlap in frequency and sustain, so splitting them live is
+  real-time source separation, much less reliable than drums. If anything, a continuous "melody energy" source like
+  Bass, not hits.
+- **Training stays private.** The training code, the music and the labels live in a local repo that isn't
+  published. Only the weights ship, inside Thump, under the app's MIT licence: the model is our own, trained on labels
+  (none of the teachers' weights, code or data are bundled). EDM-HSE loops (CC BY 4.0) are credited in the README.
+- **Shipped (first version).** Kick, clap/snare and hats from one model, confidence-to-brightness, a *Hats* role.
+  Next: a bigger model, and a labelling tool so hand-corrected songs from bug reports become training data that
+  counts far more than the teachers' labels.
+- **Before claiming it's the first:** check for existing live per-instrument light sync (lighting consoles, DJ
+  lighting add-ons, smart-light apps) so the README and any store listing say only what's true.
 
 ## Other ideas
 
 - Re-check "IRONIC" by ero808, where the BPM used to jump between readings (146 → 125), against the new tempo tracker
   with `RealMusicBench`.
-- A causal (no-lookahead) drum model, trained by distillation: run the current detectors offline with full hindsight
-  as the teacher, train a small model that only sees the past to match it. Same latency as today, no hand-tuned cues.
 - "Speaker delay" setting: Bluetooth speakers play 150–250 ms after Windows hands over the audio, so the lights could
   be held back to land exactly on what you hear, with no prediction involved.
 - Remember each song's hit timeline and replay it in sync with the player's position on later plays.

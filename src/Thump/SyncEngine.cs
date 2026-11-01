@@ -16,7 +16,7 @@ public sealed class SyncEngine : IDisposable
     const double FrameHz = 50;
 
     readonly AppSettings _settings;
-    readonly AudioAnalyzer _audio = new();
+    readonly AudioAnalyzer _audio = new() { UseDrumModel = true };
     readonly AlbumArtSource _albumArt = new();
     readonly SongCache _songs = new(SongCache.DefaultDir);
     readonly object _trackLock = new();
@@ -273,6 +273,8 @@ public sealed class SyncEngine : IDisposable
                 LightRole.Mids => mids,
                 LightRole.Highs => highs,
                 LightRole.Ambient => 1,
+                // A gentle shimmer, not a strobe: 16th hats would be far past 3 flashes a second.
+                LightRole.Hats => mix * (0.6 + 0.4 * f.HatEnvelope),
                 _ => mix + s.KickPunch * kick,
             };
             level = Math.Pow(Math.Clamp(level * s.Gain, 0, 1), s.Contrast);

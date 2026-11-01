@@ -10,7 +10,7 @@ namespace Thump;
 
 public enum ColorSource { Preset, AlbumArt, Screen, Custom }
 public enum ColorMotion { StepOnKick, Drift, Static }
-public enum LightRole { Mix, Bass, Kick, Clap, Mids, Highs, Ambient }
+public enum LightRole { Mix, Bass, Kick, Clap, Mids, Highs, Ambient, Hats }
 
 public abstract class Observable : INotifyPropertyChanged
 {
