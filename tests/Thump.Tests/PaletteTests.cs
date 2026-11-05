@@ -51,6 +51,79 @@ public class PaletteTests
         AssertAllDistinct(p);
     }
 
+    static readonly Rgb Red = new(1, 0, 0), Blue = new(0, 0, 1), Green = new(0, 1, 0);
+
+    [Fact]
+    public void Crossfade_moves_gradually_and_lands_on_the_new_colours()
+    {
+        var fade = new PaletteCrossfade(3);
+        fade.FadeTo([Red]);
+        Assert.Equal(Red, fade.At(0)); // first palette: nothing to fade from
+
+        fade.FadeTo([Blue]);
+        Assert.Equal(Red, fade.At(0));
+
+        fade.Advance(1.5);
+        Assert.Equal(new Rgb(0.5, 0, 0.5), fade.At(0));
+
+        fade.Advance(1.5);
+        Assert.False(fade.IsFading);
+        Assert.Equal(Blue, fade.At(0));
+    }
+
+    [Fact]
+    public void Skipping_mid_fade_continues_from_what_is_showing()
+    {
+        var fade = new PaletteCrossfade(3);
+        fade.FadeTo([Red]);
+        fade.FadeTo([Blue]);
+        fade.Advance(1.5);
+        var showing = fade.At(0);
+
+        fade.FadeTo([Green]);
+        Assert.Equal(showing, fade.At(0));
+    }
+
+    [Fact]
+    public void Crossfade_handles_palettes_of_different_lengths_without_a_jump()
+    {
+        var fade = new PaletteCrossfade(3);
+        fade.FadeTo([Red, Blue, Green]);
+        var before = Enumerable.Range(0, 3).Select(i => fade.At(i + 0.25)).ToList();
+
+        fade.FadeTo([Green, Blue]);
+        Assert.Equal(before, Enumerable.Range(0, 3).Select(i => fade.At(i + 0.25)));
+    }
+
+    [Fact]
+    public void Refetching_the_same_colours_does_not_restart_a_fade()
+    {
+        var fade = new PaletteCrossfade(3);
+        fade.FadeTo([Red]);
+        fade.FadeTo([Blue]);
+        fade.Advance(1.5);
+        var showing = fade.At(0);
+
+        fade.FadeTo([Blue]);
+        Assert.Equal(showing, fade.At(0));
+    }
+
+    [Fact]
+    public void Slider_changes_apply_at_once_unless_fading()
+    {
+        var fade = new PaletteCrossfade(3);
+        fade.SetTarget([Red]);
+        fade.SetTarget([Blue]);
+        Assert.Equal(Blue, fade.At(0));
+
+        fade.FadeTo([Red]);
+        fade.Advance(1.5);
+        fade.SetTarget([Green]);
+        Assert.True(fade.IsFading);
+        fade.Advance(1.5);
+        Assert.Equal(Green, fade.At(0));
+    }
+
     [Fact]
     public void Many_lights_still_get_distinct_colours()
     {
