@@ -14,6 +14,7 @@ public readonly record struct LightOutput(int ChannelId, string Name, Rgb Color)
 public sealed class SyncEngine : IDisposable
 {
     const double FrameHz = 50;
+    const double PaletteFadeSeconds = 3;
 
     readonly AppSettings _settings;
     readonly AudioAnalyzer _audio = new() { UseDrumModel = true };
@@ -46,6 +47,9 @@ public sealed class SyncEngine : IDisposable
     readonly Dictionary<int, Rgb> _screenColors = [];
     double _paletteOffset, _paletteTarget;
     long _lastKickCount;
+    readonly PaletteCrossfade _crossfade = new(PaletteFadeSeconds);
+    NowPlaying? _paletteTrack;
+    ColorSource _lastColorSource;
 
     public SyncEngine(AppSettings settings)
     {
@@ -151,7 +155,6 @@ public sealed class SyncEngine : IDisposable
         var clock = Stopwatch.StartNew();
         double last = 0, nextFrame = 0;
         int frame = 0;
-        var palette = new List<Rgb>();
         try
         {
             while (_running)
@@ -178,11 +181,12 @@ public sealed class SyncEngine : IDisposable
                 }
                 if (frame % 10 == 0)
                 {
-                    palette = CurrentPalette(s);
-                    Palette = palette.ToArray();
+                    UpdatePalette(s);
+                    Palette = _crossfade.Current();
                 }
+                _crossfade.Advance(dt);
 
-                var outputs = Render(s, f, dt, palette, screenMode ? screen : null);
+                var outputs = Render(s, f, dt, screenMode ? screen : null);
                 Outputs = outputs;
 
                 var streamer = _streamer;
@@ -227,7 +231,20 @@ public sealed class SyncEngine : IDisposable
         return Palettes.Expand(p.Select(c => c.Vivid(s.Vividness).Normalized()).ToList(), Math.Max(1, lights));
     }
 
-    LightOutput[] Render(AppSettings s, AudioFeatures f, double dt, List<Rgb> palette, ScreenSampler? screen)
+    /// <summary>A new cover fades in; anything else (a slider, another colour source, the light count) applies at once.</summary>
+    void UpdatePalette(AppSettings s)
+    {
+        var track = s.ColorSource == ColorSource.AlbumArt ? _albumArt.Current : null;
+        bool newTrack = s.ColorSource == ColorSource.AlbumArt && _lastColorSource == ColorSource.AlbumArt && track != _paletteTrack;
+        _lastColorSource = s.ColorSource;
+        _paletteTrack = track;
+
+        var target = CurrentPalette(s);
+        if (newTrack) _crossfade.FadeTo(target);
+        else _crossfade.SetTarget(target);
+    }
+
+    LightOutput[] Render(AppSettings s, AudioFeatures f, double dt, ScreenSampler? screen)
     {
         var lights = CurrentLights(s);
         var L = f.Levels;
@@ -299,7 +316,7 @@ public sealed class SyncEngine : IDisposable
             }
             else
             {
-                color = PaletteAt(palette, idx + _paletteOffset) * brightness;
+                color = _crossfade.At(idx + _paletteOffset) * brightness;
                 if (light.Role is LightRole.Mix or LightRole.Highs)
                     color = Rgb.Lerp(color, Rgb.White * brightness, Math.Clamp(highs * highs * s.Sparkle, 0, 1));
             }
@@ -307,17 +324,6 @@ public sealed class SyncEngine : IDisposable
             idx++;
         }
         return outputs.ToArray();
-    }
-
-    static Rgb PaletteAt(List<Rgb> p, double pos)
-    {
-        if (p.Count == 1) return p[0];
-        pos = ((pos % p.Count) + p.Count) % p.Count;
-        int i = (int)pos;
-        double t = pos - i;
-        // Ease so colours dwell, then move quickly — feels more on-beat than a linear fade.
-        t = t * t * (3 - 2 * t);
-        return Rgb.Lerp(p[i], p[(i + 1) % p.Count], t);
     }
 
     static readonly List<LightSetting> PreviewLights =
